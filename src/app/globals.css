@@ -1,26 +1,151 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-heading: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  /* Pivot-only tokens, usable as bg-surface-2, text-text-3, border-border-strong, etc. */
+  --color-surface: var(--pivot-surface);
+  --color-surface-2: var(--pivot-surface-2);
+  --color-border-strong: var(--pivot-border-strong);
+  --color-text: var(--pivot-text);
+  --color-text-2: var(--pivot-text-2);
+  --color-text-3: var(--pivot-text-3);
+  --color-accent-text: var(--pivot-accent-text);
+  --color-accent-600: var(--pivot-accent-600);
+  --color-accent-700: var(--pivot-accent-700);
+  --color-accent-800: var(--pivot-accent-800);
+  --color-accent-900: var(--pivot-accent-900);
+  --color-amber: var(--pivot-amber);
+  --color-amber-bg: var(--pivot-amber-bg);
+  --color-amber-border: var(--pivot-amber-border);
+  --color-green: var(--pivot-green);
+  --color-green-bg: var(--pivot-green-bg);
+  --color-red: var(--pivot-red);
+  --color-red-bg: var(--pivot-red-bg);
+  --color-canvas: var(--pivot-canvas);
+  --radius-lg-card: 14px;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Pivot design tokens (design handoff, "Design tokens"). The app is dark by design;
+   :root and .dark are the same palette so shadcn components pick it up either way. */
+:root, .dark {
+  color-scheme: dark;
+
+  /* raw palette */
+  --pivot-bg: #13202D;
+  --pivot-surface: #1A2B3B;
+  --pivot-surface-2: #223649;
+  --pivot-border: #2D4356;
+  --pivot-border-strong: #3D566C;
+  --pivot-text: #EEF4F8;
+  --pivot-text-2: #B9C8D6;
+  --pivot-text-3: #8A9DB0;
+  --pivot-accent: #5CC8F2;
+  --pivot-accent-text: #8FD8F6;
+  --pivot-accent-600: #2688B5;
+  --pivot-accent-700: #1D6A8F;
+  --pivot-accent-800: #144760;
+  --pivot-accent-900: #0F3345;
+  --pivot-accent-100: #EFFAFF;
+  --pivot-accent-200: #CDEFFC;
+  --pivot-amber: #F3C96E;
+  --pivot-amber-bg: #3B2F12;
+  --pivot-amber-border: #5A4718;
+  --pivot-green: #7FDCA2;
+  --pivot-green-bg: #173628;
+  --pivot-red: #F19C90;
+  --pivot-red-bg: #3B211E;
+  --pivot-canvas: #0C161F;
+
+  /* shadcn semantic slots mapped onto the palette */
+  --background: var(--pivot-bg);
+  --foreground: var(--pivot-text);
+  --card: var(--pivot-surface);
+  --card-foreground: var(--pivot-text);
+  --popover: var(--pivot-surface);
+  --popover-foreground: var(--pivot-text);
+  --primary: var(--pivot-accent);
+  --primary-foreground: var(--pivot-bg);
+  --secondary: var(--pivot-surface-2);
+  --secondary-foreground: var(--pivot-text);
+  --muted: var(--pivot-surface-2);
+  --muted-foreground: var(--pivot-text-3);
+  --accent: var(--pivot-surface-2);
+  --accent-foreground: var(--pivot-text);
+  --destructive: var(--pivot-red);
+  --border: var(--pivot-border);
+  --input: var(--pivot-border-strong);
+  --ring: var(--pivot-accent);
+  --chart-1: var(--pivot-accent);
+  --chart-2: var(--pivot-accent-700);
+  --chart-3: var(--pivot-amber);
+  --chart-4: var(--pivot-green);
+  --chart-5: var(--pivot-red);
+  --radius: 8px;
+  --sidebar: var(--pivot-surface);
+  --sidebar-foreground: var(--pivot-text);
+  --sidebar-primary: var(--pivot-accent);
+  --sidebar-primary-foreground: var(--pivot-bg);
+  --sidebar-accent: var(--pivot-surface-2);
+  --sidebar-accent-foreground: var(--pivot-text);
+  --sidebar-border: var(--pivot-border);
+  --sidebar-ring: var(--pivot-accent);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  h1, h2, h3 { font-weight: 500; letter-spacing: -0.02em; text-wrap: balance; }
+  html {
+    @apply font-sans;
+  }
 }
