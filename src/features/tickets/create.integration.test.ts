@@ -10,10 +10,10 @@ import type { Database } from "@/lib/supabase/database.types";
 import { createTicket } from "./create";
 
 const enabled = process.env.PIVOT_INTEGRATION === "1";
-const NODUS = "00000000-0000-0000-0000-000000000001";
-const NODUS_BRAND = "00000000-0000-0000-0000-000000000011";
-const SECTOR_DEEP = "00000000-0000-0000-0000-000000000101";
-const AWAKE_BRAND = "00000000-0000-0000-0000-000000000022";
+const NODUS = "a0000000-0000-4000-8000-000000000001";
+const NODUS_BRAND = "a0000000-0000-4000-8000-000000000011";
+const SECTOR_DEEP = "a0000000-0000-4000-8000-000000000101";
+const AWAKE_BRAND = "a0000000-0000-4000-8000-000000000022";
 
 function env(name: string): string {
   const fromProcess = process.env[name];
