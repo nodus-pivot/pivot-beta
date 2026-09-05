@@ -221,8 +221,9 @@ web3 = 30
 # secret = ""
 
 [auth.email]
-# Allow/disallow new user signups via email to your project.
-enable_signup = false
+# This flag turns the email provider on or off; new accounts are still blocked by
+# [auth] enable_signup above. Dev-only password sign-in until the Google client exists.
+enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
