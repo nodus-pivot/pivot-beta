@@ -557,6 +557,7 @@ export type Database = {
           customer_name: string | null
           customer_phone: string | null
           customer_photos: string[]
+          customer_watch_description: string | null
           estimated_done_at: string | null
           gmail_thread_id: string | null
           id: string
@@ -587,8 +588,7 @@ export type Database = {
           ticket_number: string
           time_spent_minutes: number | null
           updated_at: string
-          watch_id: string | null
-          watch_model: string | null
+          watch_id: string
           watch_received_at: string | null
           watch_serial: string | null
           workspace_id: string
@@ -603,6 +603,7 @@ export type Database = {
           customer_name?: string | null
           customer_phone?: string | null
           customer_photos?: string[]
+          customer_watch_description?: string | null
           estimated_done_at?: string | null
           gmail_thread_id?: string | null
           id?: string
@@ -633,8 +634,7 @@ export type Database = {
           ticket_number: string
           time_spent_minutes?: number | null
           updated_at?: string
-          watch_id?: string | null
-          watch_model?: string | null
+          watch_id: string
           watch_received_at?: string | null
           watch_serial?: string | null
           workspace_id: string
@@ -649,6 +649,7 @@ export type Database = {
           customer_name?: string | null
           customer_phone?: string | null
           customer_photos?: string[]
+          customer_watch_description?: string | null
           estimated_done_at?: string | null
           gmail_thread_id?: string | null
           id?: string
@@ -679,8 +680,7 @@ export type Database = {
           ticket_number?: string
           time_spent_minutes?: number | null
           updated_at?: string
-          watch_id?: string | null
-          watch_model?: string | null
+          watch_id?: string
           watch_received_at?: string | null
           watch_serial?: string | null
           workspace_id?: string
