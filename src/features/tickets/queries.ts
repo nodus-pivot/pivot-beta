@@ -64,3 +64,34 @@ export async function getIntakeCatalog(workspaceId: string): Promise<{ brands: C
     })),
   };
 }
+
+import type { TicketDetail, TicketEvent } from "./detail";
+
+/** The full ticket for the detail page, or null when it doesn't exist or is out of scope. */
+export async function getTicketDetail(id: string): Promise<TicketDetail | null> {
+  const supabase = await createClient();
+  const { data: t, error } = await supabase
+    .from("tickets")
+    .select("*, watches(model, reference, warranty_months), brands(name), ticket_parts(*), shipments(*)")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!t) return null;
+
+  // Actor names come from profiles; RLS may hide other people's rows, so the join is optional.
+  const { data: events } = await supabase
+    .from("ticket_events")
+    .select("id, type, body, from_stage, to_stage, payload, created_at, actor:profiles(display_name, role)")
+    .eq("ticket_id", id)
+    .order("created_at");
+
+  const { watches, brands, ticket_parts, shipments, ...row } = t;
+  return {
+    ...row,
+    watch: watches,
+    brand: brands,
+    parts: ticket_parts,
+    shipments,
+    events: (events ?? []).map((e): TicketEvent => ({ ...e, actor: e.actor ?? null })),
+  };
+}

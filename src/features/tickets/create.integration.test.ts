@@ -7,7 +7,10 @@ import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { afterAll, describe, expect, it } from "vitest";
 import type { Database } from "@/lib/supabase/database.types";
+import { advance, sendBack } from "@/features/pipeline";
 import { createTicket } from "./create";
+import { toPipelineTicket } from "./detail";
+import { applyTransition } from "./transition";
 
 const enabled = process.env.PIVOT_INTEGRATION === "1";
 const NODUS = "a0000000-0000-4000-8000-000000000001";
@@ -78,6 +81,40 @@ describe.skipIf(!enabled)("createTicket (integration)", () => {
     const { data: events } = await db.from("ticket_events").select("type, from_stage, to_stage").eq("ticket_id", t.id).order("created_at");
     expect(events?.map((e) => e.type)).toEqual(["created", "stage_changed", "email_logged"]);
     expect(events?.[1]).toMatchObject({ from_stage: "intake", to_stage: "received" });
+  });
+
+  it("moves a ticket back and forward through applyTransition", async () => {
+    await signIn();
+    const t = await createTicket(
+      db,
+      { workspaceId: NODUS, ticketPrefix: "NW", actorId: userId },
+      {
+        customer_name: "Move Test", customer_email: "move@example.com", customer_phone: null,
+        brand_id: NODUS_BRAND, watch_id: SECTOR_DEEP, watch_serial: null,
+        issue_description: "transition test", return_address: { line1: null, line2: null, city: null, state: null, postal_code: null, country: null },
+        requires_payment: false, priority: false, send_email: false,
+      },
+    );
+    created.push(t.id);
+    const settings = { sendReturnLabelEnabled: false };
+    const load = async () => {
+      const { data } = await db.from("tickets").select("*, watches(model, reference, warranty_months), brands(name), ticket_parts(*), shipments(*)").eq("id", t.id).single();
+      const { data: events } = await db.from("ticket_events").select("id, type, body, from_stage, to_stage, payload, created_at").eq("ticket_id", t.id).order("created_at");
+      const { watches, brands, ticket_parts, shipments, ...row } = data!;
+      return { ...row, watch: watches, brand: brands, parts: ticket_parts, shipments, events: (events ?? []).map((e) => ({ ...e, actor: null })) };
+    };
+
+    const back = sendBack(toPipelineTicket(await load()), "workspace_admin", settings);
+    expect(back).toMatchObject({ ok: true, to: "intake" });
+    if (back.ok) await applyTransition(db, t.id, userId, back, false);
+    expect((await load()).stage).toBe("intake");
+
+    const fwd = advance(toPipelineTicket(await load()), "workspace_admin", settings);
+    expect(fwd).toMatchObject({ ok: true, to: "received" });
+    if (fwd.ok) await applyTransition(db, t.id, userId, fwd, true);
+    const after = await load();
+    expect(after.stage).toBe("received");
+    expect(after.events.map((e) => e.type)).toEqual(["created", "stage_changed", "email_skipped", "sent_back", "stage_changed", "email_logged"]);
   });
 
   it("refuses a watch that isn't sold under the chosen brand", async () => {

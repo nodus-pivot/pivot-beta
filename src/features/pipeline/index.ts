@@ -4,3 +4,4 @@ export * from "./path";
 export * from "./gate";
 export * from "./emails";
 export * from "./transitions";
+export * from "./components";

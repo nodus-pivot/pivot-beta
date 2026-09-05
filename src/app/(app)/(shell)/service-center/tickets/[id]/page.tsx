@@ -1,26 +1,46 @@
-import { notFound } from "next/navigation";
+import type { Metadata } from "next";
+import { notFound, redirect } from "next/navigation";
+import { getCurrentUser } from "@/features/auth/queries";
+import { SIGN_IN_PATH } from "@/features/auth/redirect";
 import { STAGE_DEFINITIONS, isLiveStage } from "@/features/pipeline";
-import { createClient } from "@/lib/supabase/server";
+import { TicketFrame } from "@/features/tickets/components/ticket-frame";
+import { getTicketDetail } from "@/features/tickets/queries";
+import { getWorkspaceContext } from "@/features/workspaces/queries";
 
-/** Placeholder until the ticket detail frame (step 5). */
-export default async function TicketPage({ params }: { params: Promise<{ id: string }> }) {
+type Params = { params: Promise<{ id: string }> };
+
+export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { id } = await params;
-  const supabase = await createClient();
-  const { data: t } = await supabase
-    .from("tickets")
-    .select("ticket_number, customer_name, stage, watches(model)")
-    .eq("id", id)
-    .maybeSingle();
+  const t = await getTicketDetail(id);
+  return { title: t ? `${t.ticket_number} · ${t.customer_name ?? ""}` : "Ticket" };
+}
+
+export default async function TicketPage({ params }: Params) {
+  const { id } = await params;
+  const user = await getCurrentUser();
+  if (!user) redirect(SIGN_IN_PATH);
+  const t = await getTicketDetail(id);
   if (!t) notFound();
-  const stage = isLiveStage(t.stage) ? STAGE_DEFINITIONS[t.stage].name : t.stage;
+  const { workspaces } = await getWorkspaceContext();
+  const ws = workspaces.find((w) => w.id === t.workspace_id);
+  const settings = { sendReturnLabelEnabled: ws?.send_return_label_enabled ?? false };
+
   return (
-    <div className="px-16 py-11">
-      <p className="font-mono text-[13px] text-text-3">{t.ticket_number}</p>
-      <h1 className="mt-1 text-[34px] tracking-[-0.025em]">{t.customer_name}</h1>
-      <p className="mt-1 text-[14.5px] text-text-2">
-        {t.watches?.model} · {stage}
+    <TicketFrame t={t} role={user.profile.role} settings={settings}>
+      <CurrentStepPlaceholder stage={t.stage} />
+    </TicketFrame>
+  );
+}
+
+/** Stand-in until each stage's form is built (steps 6–11). */
+function CurrentStepPlaceholder({ stage }: { stage: string }) {
+  const name = isLiveStage(stage) ? STAGE_DEFINITIONS[stage].name : stage;
+  return (
+    <div>
+      <h2 className="text-[22px]">{name}</h2>
+      <p className="mt-2 rounded-lg border border-dashed border-border px-4 py-6 text-center text-[14px] text-text-3">
+        The {name} form is the next screen to be built. The action below already checks this stage&rsquo;s requirements.
       </p>
-      <p className="mt-8 text-[14.5px] text-text-3">The ticket detail page is the next screen to be built.</p>
     </div>
   );
 }
