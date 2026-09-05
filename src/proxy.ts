@@ -1,10 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { authRedirect } from "@/features/auth/redirect";
 
 /**
- * Runs on every request and refreshes the Supabase session cookie so server
- * components always see a valid session. Signed-out redirects are added when
- * the signed-in app exists; today every route is public.
+ * Runs on every request: refreshes the Supabase session cookie so server
+ * components always see a valid session, and applies the sign-in redirects
+ * decided by features/auth/redirect.ts.
  */
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -28,8 +29,18 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  // Touching the user refreshes an expiring token; the result is not used yet.
-  await supabase.auth.getUser();
+  // getUser() validates against Supabase; never trust the raw cookie.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const target = authRedirect(request.nextUrl.pathname, Boolean(user));
+  if (target) {
+    const url = request.nextUrl.clone();
+    url.pathname = target;
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
   return response;
 }
 
