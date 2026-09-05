@@ -22,6 +22,7 @@ export function SignInForm() {
           autoComplete="email"
           required
           autoFocus
+          defaultValue={state.email ?? ""}
           aria-invalid={invalid || undefined}
           className={field}
         />
