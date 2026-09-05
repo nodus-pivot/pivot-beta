@@ -10,6 +10,7 @@
     "db:types": "supabase gen types typescript --linked --schema public > src/lib/supabase/database.types.ts",
     "db:push": "supabase db push",
     "test": "vitest run",
+    "test:integration": "PIVOT_INTEGRATION=1 vitest run src/features/tickets/create.integration.test.ts",
     "test:watch": "vitest"
   },
   "dependencies": {

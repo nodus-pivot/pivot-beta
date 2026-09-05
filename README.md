@@ -46,3 +46,8 @@ When they arrive they live as Supabase edge-function secrets, never in the datab
 - **brand_rep**: intake and parts for a set of brands.
 
 There is no self-signup. A workspace admin adds people on Settings → Users; sign-in is Google only.
+
+## Tests
+
+`npm test` runs the unit tests (pipeline rules, ticket numbering, sign-in schema).
+`npm run test:integration` creates and deletes a real ticket on the linked dev project as the dev admin; it needs `.env.local`, `.dev-admin-password`, and Node 22+.
