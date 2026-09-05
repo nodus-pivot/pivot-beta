@@ -6,6 +6,8 @@ describe("isAppPath", () => {
     expect(isAppPath("/home")).toBe(true);
     expect(isAppPath("/home/anything")).toBe(true);
     expect(isAppPath("/homepage")).toBe(false);
+    expect(isAppPath("/service-center/tickets/abc")).toBe(true);
+    expect(isAppPath("/settings")).toBe(true);
     expect(isAppPath("/")).toBe(false);
     expect(isAppPath("/sign-in")).toBe(false);
   });

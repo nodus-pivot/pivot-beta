@@ -4,7 +4,7 @@
  */
 
 /** Routes that require a session. Everything else is public. */
-const APP_PREFIXES = ["/home"];
+const APP_PREFIXES = ["/home", "/service-center", "/ops", "/report", "/settings"];
 
 export const SIGN_IN_PATH = "/sign-in";
 export const AFTER_SIGN_IN_PATH = "/home";
