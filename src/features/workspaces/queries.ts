@@ -14,7 +14,7 @@ export type Workspace = Pick<
 export type WorkspaceContext = {
   /** Every workspace the user can see, per RLS. */
   workspaces: Workspace[];
-  /** The one they are working in: the cookie's choice if visible, else the first. */
+  /** The one they are working in: the cookie's choice if visible, else the oldest. */
   current: Workspace | null;
 };
 
@@ -23,7 +23,7 @@ export const getWorkspaceContext = cache(async (): Promise<WorkspaceContext> => 
   const { data } = await supabase
     .from("workspaces")
     .select("id, name, slug, ticket_prefix, send_return_label_enabled")
-    .order("name");
+    .order("created_at");
   const workspaces = data ?? [];
   const wanted = (await cookies()).get(WORKSPACE_COOKIE)?.value;
   const current = workspaces.find((w) => w.id === wanted) ?? workspaces[0] ?? null;

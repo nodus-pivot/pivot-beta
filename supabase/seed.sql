@@ -66,52 +66,55 @@ on conflict (id) do nothing;
 -- DEMO DATA. One ticket per live stage so the Service Center sidebar has
 -- something to show. Names and models follow the mockups. Inserted as the
 -- seed role, so stage is written directly (the app goes through set_stage).
+-- Demo tickets are deleted and reinserted so their timestamps stay fresh
+-- relative to now() (updated_at cannot be set through an update).
+
+delete from tickets where id between '00000000-0000-0000-0000-000000000401' and '00000000-0000-0000-0000-000000000406';
 
 insert into tickets (id, ticket_number, workspace_id, brand_id, stage, customer_name, customer_email, watch_id, watch_serial,
                      issue_description, priority, requires_payment, watch_received_at, intake_components, repair_categories,
-                     repair_complete, testing_checks, closed_at, created_at)
+                     repair_complete, testing_checks, closed_at, created_at, updated_at, parts_requested_at)
 values
   ('00000000-0000-0000-0000-000000000401', 'NW260041', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000011',
    'received', 'Maria Lopez', 'maria@example.com', '00000000-0000-0000-0000-000000000101', '501122',
    'Second hand stutters and the watch loses about two minutes a day.', false, false, null, '[]', '[]',
-   false, '{"timekeeping": false, "water_resistance": false, "visual": false}', null, now() - interval '2 days'),
+   false, '{"timekeeping": false, "water_resistance": false, "visual": false}', null, now() - interval '2 days', now() - interval '2 days', null),
   ('00000000-0000-0000-0000-000000000402', 'NW260038', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000011',
    'request_part', 'James Whitfield', 'james@example.com', '00000000-0000-0000-0000-000000000102', '204056',
    'Crown fell off while setting the time.', false, false, now() - interval '6 days',
    '[{"component": "Crown/Stem", "conditions": ["Cracked"]}]', '[]',
-   false, '{"timekeeping": false, "water_resistance": false, "visual": false}', null, now() - interval '7 days'),
+   false, '{"timekeeping": false, "water_resistance": false, "visual": false}', null, now() - interval '7 days', now() - interval '5 days', now() - interval '5 days'),
   ('00000000-0000-0000-0000-000000000403', 'NW260035', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000011',
    'in_repair', 'Adam Ferguson', 'adam@example.com', '00000000-0000-0000-0000-000000000101', '506269',
    'Bezel insert cracked after a drop.', true, true, now() - interval '9 days',
    '[{"component": "Bezel", "conditions": ["Cracked"]}, {"component": "Case", "conditions": ["Scratches"]}]',
    '[{"component": "bezel_insert", "action": "replace", "variant": "ceramic"}]',
-   false, '{"timekeeping": false, "water_resistance": false, "visual": false}', null, now() - interval '10 days'),
+   false, '{"timekeeping": false, "water_resistance": false, "visual": false}', null, now() - interval '10 days', now(), null),
   ('00000000-0000-0000-0000-000000000404', 'NW260031', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000011',
    'testing', 'Sarah Chen', 'sarah@example.com', '00000000-0000-0000-0000-000000000102', '0303291',
    'Fogging under the crystal after swimming.', false, false, now() - interval '14 days',
    '[{"component": "Crystal", "conditions": ["Discolored"]}]',
    '[{"component": "gaskets", "action": "replace"}, {"component": "crystal", "action": "repair"}]',
-   true, '{"timekeeping": true, "water_resistance": false, "visual": false}', null, now() - interval '15 days'),
+   true, '{"timekeeping": true, "water_resistance": false, "visual": false}', null, now() - interval '15 days', now() - interval '1 day', null),
   ('00000000-0000-0000-0000-000000000405', 'NW260027', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000011',
    'shipped_back', 'Leo Park', 'leo@example.com', '00000000-0000-0000-0000-000000000101', '5090169',
    'Running slow, needs regulation.', false, false, now() - interval '20 days',
    '[{"component": "Case", "conditions": ["Lightly worn"]}]',
    '[{"component": "movement", "action": "regulate"}]',
-   true, '{"timekeeping": true, "water_resistance": true, "visual": true}', null, now() - interval '21 days'),
+   true, '{"timekeeping": true, "water_resistance": true, "visual": true}', null, now() - interval '21 days', now() - interval '3 days', null),
   ('00000000-0000-0000-0000-000000000406', 'NW260019', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000011',
    'closed', 'Tom Reyes', 'tom@example.com', '00000000-0000-0000-0000-000000000102', '096/100',
    'Clasp would not stay closed.', false, false, now() - interval '40 days',
    '[{"component": "Clasp", "conditions": ["Lightly worn"]}]',
    '[{"component": "clasp", "action": "repair"}]',
-   true, '{"timekeeping": true, "water_resistance": true, "visual": true}', now() - interval '30 days', now() - interval '42 days')
-on conflict (id) do nothing;
+   true, '{"timekeeping": true, "water_resistance": true, "visual": true}', now() - interval '30 days', now() - interval '42 days', now() - interval '30 days', null)
+;
 
 -- The part James's ticket is waiting on.
 insert into ticket_parts (id, ticket_id, part_id, component, name, sku, source, requested_at)
 values
   ('00000000-0000-0000-0000-000000000501', '00000000-0000-0000-0000-000000000402', '00000000-0000-0000-0000-000000000204',
-   'movement', 'NH35 movement', 'MV-NH35', 'brand', now() - interval '5 days')
-on conflict (id) do nothing;
+   'movement', 'NH35 movement', 'MV-NH35', 'brand', now() - interval '5 days');
 
 insert into ticket_events (id, ticket_id, type, to_stage, created_at)
 select gen_random_uuid(), id, 'created', 'intake', created_at from tickets
