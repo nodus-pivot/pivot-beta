@@ -13,6 +13,23 @@ import { TemporaryPassword } from "./temporary-password";
 export function PersonFormDialog({ options }: { options: GrantOptions }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  // Each open gets a fresh form (and fresh action state), so a previous result never shows again.
+  const [session, setSession] = useState(0);
+
+  return (
+    <>
+      <button type="button" onClick={() => { setSession((n) => n + 1); setOpen(true); }} className={primaryBtn}>+ Add person</button>
+      <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) router.refresh(); }}>
+        <DialogContent showCloseButton={false} className="max-w-[560px] gap-5 rounded-[14px] border border-border bg-surface p-6 text-text ring-0 shadow-[0_0_0_1px_var(--pivot-border-strong),0_16px_40px_rgba(0,0,0,.55)] sm:max-w-[560px]">
+          <AddPersonForm key={session} options={options} onClose={() => setOpen(false)} />
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function AddPersonForm({ options, onClose }: { options: GrantOptions; onClose: () => void }) {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [state, action, pending] = useActionState<PeopleResult | null, FormData>(async (prev, fd) => {
     setEmail(String(fd.get("email") ?? ""));
@@ -25,9 +42,6 @@ export function PersonFormDialog({ options }: { options: GrantOptions }) {
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className={primaryBtn}>+ Add person</button>
-      <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) router.refresh(); }}>
-        <DialogContent showCloseButton={false} className="max-w-[560px] gap-5 rounded-[14px] border border-border bg-surface p-6 text-text ring-0 shadow-[0_0_0_1px_var(--pivot-border-strong),0_16px_40px_rgba(0,0,0,.55)] sm:max-w-[560px]">
           <DialogHeader className="text-left">
             <DialogTitle className="text-[18px] font-medium">{done ? "Account created" : "Add person"}</DialogTitle>
             <DialogDescription className="text-[14px] text-text-2">
@@ -38,7 +52,7 @@ export function PersonFormDialog({ options }: { options: GrantOptions }) {
             <>
               <TemporaryPassword email={email} password={done.temporaryPassword ?? ""} />
               <div className="mt-1 flex justify-end border-t border-border pt-4">
-                <button type="button" onClick={() => setOpen(false)} className={primaryBtn}>Done</button>
+                <button type="button" onClick={onClose} className={primaryBtn}>Done</button>
               </div>
             </>
           ) : (
@@ -54,13 +68,11 @@ export function PersonFormDialog({ options }: { options: GrantOptions }) {
               <GrantPicker options={options} prefix="grant_" error={errors.grant} />
               {state && !state.ok && <p className="text-[13px] text-red">{state.error}</p>}
               <div className="mt-1 flex items-center justify-end gap-4 border-t border-border pt-4">
-                <button type="button" onClick={() => setOpen(false)} className={ghostBtn}>Cancel</button>
+                <button type="button" onClick={onClose} className={ghostBtn}>Cancel</button>
                 <button type="submit" disabled={pending} className={primaryBtn}>{pending ? "Creating…" : "Create account"}</button>
               </div>
             </form>
           )}
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
