@@ -34,3 +34,34 @@ export function canCreateAnyTicket(grants: Grant[], workspaceId: string): boolea
 export function isBenchOnly(grants: Grant[]): boolean {
   return grants.length > 0 && grants.every((g) => g.role === "watchmaker");
 }
+
+/* ---------------------------------------------------------------- Ops pages */
+
+export type OpsPage = "supply" | "watches" | "users" | "workspace";
+
+/** Which Ops pages the person may open. Supply is read-only for brand roles; the rest is admin-only except Watches (reps view). */
+export function canOpenOpsPage(grants: Grant[], page: OpsPage, workspaceId: string, brandWorkspace: (brandId: string) => string | undefined): boolean {
+  const admin = isAdminOf(grants, workspaceId);
+  const brandRoles = grants.filter((g) => g.brand_id && brandWorkspace(g.brand_id) === workspaceId);
+  switch (page) {
+    case "supply": return admin || brandRoles.length > 0;
+    case "watches": return admin || brandRoles.some((g) => g.role === "brand_rep");
+    case "users":
+    case "workspace": return admin;
+  }
+}
+
+/** Only owners and admins edit anything in Ops; everyone else is read-only. */
+export function canEditOps(grants: Grant[], workspaceId: string): boolean {
+  return isAdminOf(grants, workspaceId);
+}
+
+/** Cost is owner/admin-only, everywhere. */
+export function canSeeCost(grants: Grant[], workspaceId: string): boolean {
+  return isAdminOf(grants, workspaceId);
+}
+
+/** Preview as a lesser role: owners anywhere, admins inside their workspaces. */
+export function canUseViewAs(realGrants: Grant[]): boolean {
+  return isAnyAdmin(realGrants);
+}

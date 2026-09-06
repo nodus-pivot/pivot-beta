@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { VIEW_AS_COOKIE, parseViewAs, viewAsHeaders } from "@/features/auth/view-as";
 import type { Database } from "./database.types";
 
 /**
@@ -8,10 +9,12 @@ import type { Database } from "./database.types";
  */
 export async function createClient() {
   const cookieStore = await cookies();
+  const headers = viewAsHeaders(parseViewAs(cookieStore.get(VIEW_AS_COOKIE)?.value));
   return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
+      global: { headers },
       cookies: {
         getAll() {
           return cookieStore.getAll();

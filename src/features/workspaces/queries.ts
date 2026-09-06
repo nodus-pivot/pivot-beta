@@ -29,3 +29,12 @@ export const getWorkspaceContext = cache(async (): Promise<WorkspaceContext> => 
   const current = workspaces.find((w) => w.id === wanted) ?? workspaces[0] ?? null;
   return { workspaces, current };
 });
+
+export type BrandOption = { id: string; name: string; workspace_id: string };
+
+/** Every brand the caller can see, with its workspace. Used for names and the View-as picker. */
+export const getVisibleBrands = cache(async (): Promise<BrandOption[]> => {
+  const supabase = await createClient();
+  const { data } = await supabase.from("brands").select("id, name, workspace_id").eq("is_active", true).order("name");
+  return data ?? [];
+});

@@ -1140,6 +1140,14 @@ export type Database = {
         Returns: undefined
       }
       consume_ticket_part: { Args: { p_row: string }; Returns: undefined }
+      my_real_grants: {
+        Args: never
+        Returns: {
+          brand_id: string
+          role: Database["public"]["Enums"]["member_role"]
+          workspace_id: string
+        }[]
+      }
       part_demand: {
         Args: { p_workspace: string }
         Returns: {

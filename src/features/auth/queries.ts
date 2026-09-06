@@ -1,8 +1,10 @@
 import "server-only";
 import { cache } from "react";
+import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/database.types";
 import type { Grant } from "@/features/pipeline";
+import { VIEW_AS_COOKIE, parseViewAs, viewAsGrant, type ViewAs } from "./view-as";
 
 export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
@@ -10,8 +12,12 @@ export type CurrentUser = {
   id: string;
   email: string;
   profile: Profile;
-  /** Every membership the person holds. Permissions are the union. */
+  /** The grants in effect for this request: the real ones, or the single preview grant. */
   grants: Grant[];
+  /** The person's real grants (what they can go back to). */
+  realGrants: Grant[];
+  /** Set while previewing as a lesser role. */
+  viewingAs: ViewAs | null;
 };
 
 /**
@@ -32,8 +38,12 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
     .maybeSingle();
   if (!profile || !profile.is_active) return null;
 
-  const { data: memberships } = await supabase.from("memberships").select("role, workspace_id, brand_id").eq("user_id", user.id);
-  const grants: Grant[] = (memberships ?? []).map((m) => ({ role: m.role, workspace_id: m.workspace_id, brand_id: m.brand_id }));
+  // The memberships read goes through the preview headers too, so it already
+  // returns the narrowed grant while previewing. Read the real ones separately.
+  const { data: memberships } = await supabase.rpc("my_real_grants");
+  const realGrants: Grant[] = (memberships ?? []).map((m) => ({ role: m.role, workspace_id: m.workspace_id, brand_id: m.brand_id }));
+  const viewingAs = parseViewAs((await cookies()).get(VIEW_AS_COOKIE)?.value);
+  const grants = viewingAs ? [viewAsGrant(viewingAs)] : realGrants;
 
-  return { id: user.id, email: user.email ?? profile.email, profile, grants };
+  return { id: user.id, email: user.email ?? profile.email, profile, grants, realGrants, viewingAs };
 });

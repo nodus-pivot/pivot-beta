@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PivotMark } from "@/components/brand/pivot-mark";
-import { signOut } from "@/features/auth/actions";
+import { clearViewAs, signOut } from "@/features/auth/actions";
 import { getCurrentUser } from "@/features/auth/queries";
 import { canOpenOps } from "@/features/auth/permissions";
 import { SIGN_IN_PATH } from "@/features/auth/redirect";
@@ -54,6 +54,14 @@ export default async function ModulePickerPage() {
           );
         })}
       </ul>
+
+      {user.viewingAs && (
+        <form action={clearViewAs} className="mt-6">
+          <button type="submit" className="rounded-lg border border-amber-border bg-amber-bg px-3 py-1.5 text-[13.5px] text-amber">
+            Previewing as another role · Exit preview
+          </button>
+        </form>
+      )}
 
       <form action={signOut} className="mt-6">
         <button type="submit" className="text-[13.5px] text-text-3 hover:text-text">
