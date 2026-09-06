@@ -189,6 +189,29 @@ describe.skipIf(!enabled)("createTicket (integration)", () => {
     await db.rpc("release_ticket_part", { p_row: rowId });
   });
 
+  it("receiving a reorder adds the stock and closes the order; part_demand counts waiting tickets", async () => {
+    await signIn();
+    const GASKET = "a0000000-0000-4000-8000-000000000205";
+    const before = (await db.from("parts_stock").select("stock_qty").eq("part_id", GASKET).single()).data?.stock_qty ?? 0;
+    const { data: order, error: e1 } = await db.from("part_orders").insert({ part_id: GASKET, qty: 3, note: "integration test", created_by: userId }).select("id").single();
+    expect(e1).toBeNull();
+    const { error: e2 } = await db.rpc("receive_part_order", { p_order: order!.id, p_qty: 3, p_note: "integration test" });
+    expect(e2).toBeNull();
+    expect((await db.from("parts_stock").select("stock_qty").eq("part_id", GASKET).single()).data?.stock_qty).toBe(before + 3);
+    const { data: closed } = await db.from("part_orders").select("received_at, stock_movement_id").eq("id", order!.id).single();
+    expect(closed?.received_at).not.toBeNull();
+    expect(closed?.stock_movement_id).not.toBeNull();
+    // Receiving twice is refused.
+    expect((await db.rpc("receive_part_order", { p_order: order!.id, p_qty: 1 })).error).not.toBeNull();
+    // Put the demo stock back and tidy the order.
+    await db.from("stock_movements").insert({ part_id: GASKET, qty_delta: -3, reason: "adjustment", note: "integration test cleanup" });
+    await db.from("part_orders").delete().eq("id", order!.id);
+
+    const { data: demand } = await db.rpc("part_demand", { p_workspace: NODUS });
+    const dial = demand?.find((d) => d.part_id === "a0000000-0000-4000-8000-000000000206");
+    expect(dial?.ticket_count).toBeGreaterThanOrEqual(1);
+  });
+
   it("refuses a watch that isn't sold under the chosen brand", async () => {
     await signIn();
     await expect(
