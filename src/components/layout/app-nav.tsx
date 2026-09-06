@@ -23,7 +23,7 @@ export function AppNav({ user, ws, brands }: { user: CurrentUser; ws: WorkspaceC
       </Link>
       <NavLinks isAdmin={canOpenOps(user.grants)} />
       <div className="ml-auto flex items-center gap-4">
-        {ws.current && <WorkspaceSwitcher workspaces={ws.workspaces} currentId={ws.current.id} />}
+        {ws.current && <WorkspaceSwitcher key={ws.current.id} workspaces={ws.workspaces} currentId={ws.current.id} />}
         {canUseViewAs(user.realGrants) && <ViewAsControl active={user.viewingAs} workspaces={ws.workspaces} brands={brands} />}
         <Link href="/home" className="flex items-center gap-2.5 text-[13.5px] text-text-2 hover:text-text">
           <span>
