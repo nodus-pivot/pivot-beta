@@ -211,3 +211,127 @@ export async function cancelPartOrder(raw: { orderId: string; partId: string }):
   revalidatePath("/service-center", "layout");
   return { ok: true };
 }
+
+/* ---------------------------------------------------------------- watches */
+
+async function loadWatchForEdit(watchId: string) {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false as const, error: "You're signed out." };
+  const supabase = await createClient();
+  const { data: watch } = await supabase.from("watches").select("id, workspace_id").eq("id", watchId).maybeSingle();
+  if (!watch) return { ok: false as const, error: "Watch not found." };
+  if (!canEditOps(user.grants, watch.workspace_id)) return { ok: false as const, error: "Only owners and admins edit watches." };
+  return { ok: true as const, user, supabase, watch };
+}
+
+const months = z.preprocess((v) => (v === "" || v == null ? null : Number(v)), z.number().int().min(0).max(600).nullable());
+
+const watchInput = z.object({
+  workspaceId: z.uuid(),
+  model: z.string().trim().min(1, "Enter the model name.").max(200),
+  reference: z.string().trim().max(100).transform((v) => v || null),
+  warranty_months: months,
+  notes: z.string().trim().max(2000).transform((v) => v || null),
+  /** Brands the watch is sold under; the first is primary. */
+  brands: z.array(z.uuid()).min(1, "Pick at least one brand.").max(20),
+  primary_brand: z.string().trim().transform((v) => v || null).pipe(z.uuid().nullable()),
+});
+
+function watchFromForm(fd: FormData) {
+  return {
+    workspaceId: fd.get("workspace_id"),
+    model: fd.get("model") ?? "",
+    reference: fd.get("reference") ?? "",
+    warranty_months: fd.get("warranty_months") ?? "",
+    notes: fd.get("notes") ?? "",
+    brands: fd.getAll("brands").map(String),
+    primary_brand: fd.get("primary_brand") ?? "",
+  };
+}
+
+async function syncWatchBrands(supabase: Awaited<ReturnType<typeof createClient>>, watchId: string, brandIds: string[], primary: string | null) {
+  const primaryId = primary && brandIds.includes(primary) ? primary : brandIds[0];
+  const { data: current } = await supabase.from("watch_brands").select("brand_id").eq("watch_id", watchId);
+  const have = new Set((current ?? []).map((c) => c.brand_id));
+  const drop = [...have].filter((id) => !brandIds.includes(id));
+  if (drop.length) await supabase.from("watch_brands").delete().eq("watch_id", watchId).in("brand_id", drop);
+  // Clear primary first so the one-primary index never trips mid-update.
+  await supabase.from("watch_brands").update({ is_primary: false }).eq("watch_id", watchId);
+  const add = brandIds.filter((id) => !have.has(id));
+  if (add.length) {
+    const { error } = await supabase.from("watch_brands").insert(add.map((brand_id) => ({ watch_id: watchId, brand_id, is_primary: false })));
+    if (error) return error.message;
+  }
+  const { error } = await supabase.from("watch_brands").update({ is_primary: true }).eq("watch_id", watchId).eq("brand_id", primaryId);
+  return error?.message ?? null;
+}
+
+export async function createWatch(_prev: OpsResult | null, fd: FormData): Promise<OpsResult> {
+  const parsed = watchInput.safeParse(watchFromForm(fd));
+  if (!parsed.success) return { ok: false, error: "Fix the highlighted fields.", fieldErrors: fieldErrors(parsed.error.issues) };
+  const input = parsed.data;
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "You're signed out." };
+  if (!canEditOps(user.grants, input.workspaceId)) return { ok: false, error: "Only owners and admins add watches." };
+  const supabase = await createClient();
+  const { data: watch, error } = await supabase
+    .from("watches")
+    .insert({ workspace_id: input.workspaceId, model: input.model, reference: input.reference, warranty_months: input.warranty_months, notes: input.notes })
+    .select("id")
+    .single();
+  if (error) return { ok: false, error: error.code === "23505" ? "That model and reference already exist." : error.message };
+  const e2 = await syncWatchBrands(supabase, watch.id, input.brands, input.primary_brand);
+  if (e2) return { ok: false, error: e2 };
+  revalidatePath("/ops", "layout");
+  redirect(`/ops/watches/${watch.id}`);
+}
+
+export async function updateWatch(_prev: OpsResult | null, fd: FormData): Promise<OpsResult> {
+  const watchId = z.uuid().safeParse(fd.get("watch_id"));
+  if (!watchId.success) return { ok: false, error: "Reload and try again." };
+  const parsed = watchInput.safeParse(watchFromForm(fd));
+  if (!parsed.success) return { ok: false, error: "Fix the highlighted fields.", fieldErrors: fieldErrors(parsed.error.issues) };
+  const input = parsed.data;
+  const ctx = await loadWatchForEdit(watchId.data);
+  if (!ctx.ok) return ctx;
+  const { error } = await ctx.supabase
+    .from("watches")
+    .update({ model: input.model, reference: input.reference, warranty_months: input.warranty_months, notes: input.notes })
+    .eq("id", watchId.data);
+  if (error) return { ok: false, error: error.code === "23505" ? "That model and reference already exist." : error.message };
+  const e2 = await syncWatchBrands(ctx.supabase, watchId.data, input.brands, input.primary_brand);
+  if (e2) return { ok: false, error: e2 };
+  revalidatePath("/ops", "layout");
+  return { ok: true };
+}
+
+const watchPartsInput = z.object({ watchId: z.uuid(), partIds: z.array(z.uuid()).max(500) });
+
+/** Which parts fit this watch. The only place the fit list is edited. */
+export async function setWatchParts(_prev: OpsResult | null, fd: FormData): Promise<OpsResult> {
+  const parsed = watchPartsInput.safeParse({ watchId: fd.get("watch_id"), partIds: fd.getAll("parts").map(String) });
+  if (!parsed.success) return { ok: false, error: "Reload and try again." };
+  const ctx = await loadWatchForEdit(parsed.data.watchId);
+  if (!ctx.ok) return ctx;
+  const { data: current } = await ctx.supabase.from("watch_parts").select("part_id").eq("watch_id", parsed.data.watchId);
+  const have = new Set((current ?? []).map((c) => c.part_id));
+  const want = new Set(parsed.data.partIds);
+  const add = [...want].filter((id) => !have.has(id));
+  const drop = [...have].filter((id) => !want.has(id));
+  if (add.length) {
+    const { error } = await ctx.supabase.from("watch_parts").insert(add.map((part_id) => ({ watch_id: parsed.data.watchId, part_id })));
+    if (error) return { ok: false, error: error.message };
+  }
+  if (drop.length) await ctx.supabase.from("watch_parts").delete().eq("watch_id", parsed.data.watchId).in("part_id", drop);
+  revalidatePath("/ops", "layout");
+  return { ok: true };
+}
+
+export async function setWatchActive(raw: { watchId: string; active: boolean }): Promise<OpsResult> {
+  const ctx = await loadWatchForEdit(raw.watchId);
+  if (!ctx.ok) return ctx;
+  const { error } = await ctx.supabase.from("watches").update({ is_active: !!raw.active }).eq("id", raw.watchId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/ops", "layout");
+  return { ok: true };
+}

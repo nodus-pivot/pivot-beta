@@ -151,3 +151,74 @@ export async function getPartDetail(partId: string, grants: Grant[]): Promise<Pa
     watches: watches ?? [],
   };
 }
+
+/* ---------------------------------------------------------------- watches */
+
+export type WatchRow = {
+  id: string;
+  model: string;
+  reference: string | null;
+  warranty_months: number | null;
+  notes: string | null;
+  is_active: boolean;
+  brands: { id: string; name: string; is_primary: boolean }[];
+  parts: { id: string; name: string; sku: string; component: string }[];
+  open_tickets: number;
+};
+
+/** The workspace's watches as the caller may see them (RLS narrows brand roles to their brands). */
+export async function listWatches(workspaceId: string): Promise<WatchRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("watches")
+    .select("id, model, reference, warranty_months, notes, is_active, watch_brands(is_primary, brands(id, name)), watch_parts(parts_for_bench(id, name, sku, component))")
+    .eq("workspace_id", workspaceId)
+    .order("model");
+  if (error) throw error;
+  const ids = (data ?? []).map((w) => w.id);
+  const { data: open } = ids.length ? await supabase.from("tickets").select("watch_id").in("watch_id", ids).neq("stage", "closed") : { data: [] };
+  const openBy = new Map<string, number>();
+  for (const t of open ?? []) openBy.set(t.watch_id, (openBy.get(t.watch_id) ?? 0) + 1);
+  return (data ?? []).map((w) => ({
+    id: w.id,
+    model: w.model,
+    reference: w.reference,
+    warranty_months: w.warranty_months,
+    notes: w.notes,
+    is_active: w.is_active,
+    brands: w.watch_brands.flatMap((wb) => (wb.brands ? [{ id: wb.brands.id, name: wb.brands.name, is_primary: wb.is_primary }] : [])).sort((a, b) => Number(b.is_primary) - Number(a.is_primary)),
+    parts: w.watch_parts
+      .flatMap((wp) => (wp.parts_for_bench?.id && wp.parts_for_bench.name && wp.parts_for_bench.sku && wp.parts_for_bench.component ? [{ id: wp.parts_for_bench.id, name: wp.parts_for_bench.name, sku: wp.parts_for_bench.sku, component: wp.parts_for_bench.component }] : []))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    open_tickets: openBy.get(w.id) ?? 0,
+  }));
+}
+
+export type WatchDetail = WatchRow & {
+  workspace_id: string;
+  /** Every active part in the workspace, for the fit editor (owners/admins). */
+  all_parts: { id: string; name: string; sku: string; component: string }[];
+  /** Brands in the workspace, for the brand editor. */
+  all_brands: { id: string; name: string }[];
+  recent_tickets: { id: string; ticket_number: string; customer_name: string | null; stage: string }[];
+};
+
+export async function getWatchDetail(watchId: string): Promise<WatchDetail | null> {
+  const supabase = await createClient();
+  const { data: probe } = await supabase.from("watches").select("id, workspace_id").eq("id", watchId).maybeSingle();
+  if (!probe) return null;
+  const row = (await listWatches(probe.workspace_id)).find((w) => w.id === watchId);
+  if (!row) return null;
+  const [{ data: parts }, { data: brands }, { data: tickets }] = await Promise.all([
+    supabase.from("parts_for_bench").select("id, name, sku, component").eq("workspace_id", probe.workspace_id).eq("is_active", true).order("name"),
+    supabase.from("brands").select("id, name").eq("workspace_id", probe.workspace_id).eq("is_active", true).order("name"),
+    supabase.from("tickets").select("id, ticket_number, customer_name, stage").eq("watch_id", watchId).order("updated_at", { ascending: false }).limit(10),
+  ]);
+  return {
+    ...row,
+    workspace_id: probe.workspace_id,
+    all_parts: (parts ?? []).flatMap((p) => (p.id && p.name && p.sku && p.component ? [{ id: p.id, name: p.name, sku: p.sku, component: p.component }] : [])),
+    all_brands: brands ?? [],
+    recent_tickets: tickets ?? [],
+  };
+}

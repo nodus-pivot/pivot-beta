@@ -81,7 +81,15 @@ export function SupplyTable({ rows, showCost, watches }: Props) {
                     <span className="block text-[12.5px] text-text-3">{componentLabel(r.component)}{!r.is_active && " · retired"}</span>
                   </td>
                   <td className="border-t border-border px-3 py-2.5 font-mono text-[13px] text-text-2">{r.sku}</td>
-                  <td className="border-t border-border px-3 py-2.5 text-[13.5px] text-text-2">{r.fits.map((f) => f.model).join(", ") || <span className="text-text-3">—</span>}</td>
+                  <td className="border-t border-border px-3 py-2.5 text-[13.5px] text-text-2">
+                    {r.fits.length === 0 && <span className="text-text-3">—</span>}
+                    {r.fits.map((f, i) => (
+                      <span key={f.id}>
+                        {i > 0 && ", "}
+                        <Link href={`/ops/watches/${f.id}`} className="hover:text-accent-text">{f.model}</Link>
+                      </span>
+                    ))}
+                  </td>
                   <td className={`border-t border-border px-3 py-2.5 text-right font-mono tabular-nums ${lowStock ? "text-amber" : ""}`}>
                     {r.stock}
                     {r.stock === 0 && <span className="ml-1.5 rounded-full bg-amber-bg px-1.5 text-[11px] text-amber">out</span>}
