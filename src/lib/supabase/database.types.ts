@@ -1005,6 +1005,8 @@ export type Database = {
       }
     }
     Functions: {
+      consume_ticket_part: { Args: { p_row: string }; Returns: undefined }
+      release_ticket_part: { Args: { p_row: string }; Returns: undefined }
       set_stage: {
         Args: {
           p_kind?: string

@@ -143,7 +143,7 @@ describe.skipIf(!enabled)("createTicket (integration)", () => {
     expect(after?.parts_requested_at).not.toBeNull();
   });
 
-  it("'All sent' takes requested catalog parts out of stock, once", async () => {
+  it("entering In repair takes diagnosed catalog parts out of stock, once; release puts one back", async () => {
     await signIn();
     const NH35 = "a0000000-0000-4000-8000-000000000204";
     const before = (await db.from("parts_stock").select("stock_qty").eq("part_id", NH35).single()).data?.stock_qty ?? 0;
@@ -175,8 +175,16 @@ describe.skipIf(!enabled)("createTicket (integration)", () => {
     const again = (await db.from("parts_stock").select("stock_qty").eq("part_id", NH35).single()).data?.stock_qty ?? 0;
     expect(again).toBe(before - 1);
 
+    // Unpicking the Replace returns the unit, and re-consuming takes exactly one again.
+    const { data: rowIds } = await db.from("ticket_parts").select("id").eq("ticket_id", t.id);
+    const rowId = rowIds![0].id;
+    expect((await db.rpc("release_ticket_part", { p_row: rowId })).error).toBeNull();
+    expect((await db.from("parts_stock").select("stock_qty").eq("part_id", NH35).single()).data?.stock_qty).toBe(before);
+    expect((await db.rpc("consume_ticket_part", { p_row: rowId })).error).toBeNull();
+    expect((await db.rpc("consume_ticket_part", { p_row: rowId })).error).toBeNull();
+    expect((await db.from("parts_stock").select("stock_qty").eq("part_id", NH35).single()).data?.stock_qty).toBe(before - 1);
     // Put the unit back so the demo stock stays at its seeded level.
-    await db.from("stock_movements").insert({ part_id: NH35, qty_delta: 1, reason: "returned", ticket_id: t.id, note: "integration test cleanup" });
+    await db.rpc("release_ticket_part", { p_row: rowId });
   });
 
   it("refuses a watch that isn't sold under the chosen brand", async () => {

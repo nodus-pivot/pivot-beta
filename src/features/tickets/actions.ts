@@ -337,32 +337,41 @@ async function loadForRepairEdit(ticketId: string) {
   return { ok: true as const, user, supabase, ticket: t };
 }
 
-const categorySchema = z.object({
+const repairRowSchema = z.object({
   component: z.enum(COMPONENTS),
-  action: z.enum(["repair", "replace", "regulate"]).optional(),
-  variant: z.string().trim().max(40).optional(),
+  action: z.enum(["repair", "replace", "regulate"]).nullable(),
+  variant: z.string().trim().max(40).nullable(),
+  part_id: z.uuid().nullable(),
+  part_name: z.string().trim().max(120).nullable(),
 });
 
 const repairInput = z.object({
   ticketId: z.uuid(),
-  categories: z.array(categorySchema).max(COMPONENTS.length),
+  rows: z.array(repairRowSchema).max(COMPONENTS.length),
   solution_notes: z.string().trim().max(5000).nullable(),
   time_spent_minutes: z.number().int().min(0).max(100_000).nullable(),
   coverage: z.enum(["warranty", "paid"]).nullable(),
   repair_complete: z.boolean(),
 });
 
-/** Autosave for the In repair fields. Whole-state, so the last save wins. */
+/**
+ * Autosave for In repair. Whole-state. Writes repair_categories (the same
+ * rows the diagnosis created) and keeps ticket_parts equal to the Replace
+ * picks: a new pick consumes a unit, an unpicked one returns it.
+ */
 export async function saveInRepair(raw: z.input<typeof repairInput>): Promise<SaveResult> {
   const parsed = repairInput.safeParse(raw);
   if (!parsed.success) return { ok: false, error: "Some of that didn't look right; reload and try again." };
   const input = parsed.data;
   const ctx = await loadForRepairEdit(input.ticketId);
   if (!ctx.ok) return ctx;
-  const { error } = await ctx.supabase
+  const { supabase, user } = ctx;
+
+  const categories = input.rows.map((r) => ({ component: r.component, ...(r.action ? { action: r.action } : {}), ...(r.variant ? { variant: r.variant } : {}) }));
+  const { error } = await supabase
     .from("tickets")
     .update({
-      repair_categories: input.categories,
+      repair_categories: categories,
       solution_notes: input.solution_notes,
       time_spent_minutes: input.time_spent_minutes,
       coverage: input.coverage,
@@ -370,50 +379,47 @@ export async function saveInRepair(raw: z.input<typeof repairInput>): Promise<Sa
     })
     .eq("id", input.ticketId);
   if (error) return { ok: false, error: error.message };
+
+  // Parts follow the Replace rows.
+  const { data: rows } = await supabase.from("ticket_parts").select("id, part_id, name, component, stock_movement_id").eq("ticket_id", input.ticketId);
+  const existing = rows ?? [];
+  const wanted = input.rows.filter((r) => r.action === "replace" && (r.part_id || r.part_name));
+  const keep = new Set<string>();
+  const catalog = wanted.some((w) => w.part_id) ? await getPartsForWatch(ctx.ticket.watch_id) : [];
+  for (const w of wanted) {
+    const match = existing.find((r) => r.component === w.component && (w.part_id ? r.part_id === w.part_id : !r.part_id && r.name.toLowerCase() === (w.part_name ?? "").toLowerCase()));
+    if (match) {
+      keep.add(match.id);
+      if (match.part_id && !match.stock_movement_id) await supabase.rpc("consume_ticket_part", { p_row: match.id });
+      continue;
+    }
+    let insert: Database["public"]["Tables"]["ticket_parts"]["Insert"];
+    if (w.part_id) {
+      const c = catalog.find((x) => x.id === w.part_id);
+      if (!c) return { ok: false, error: "One of those parts doesn't fit this watch. Reload and try again." };
+      insert = { ticket_id: input.ticketId, part_id: c.id, component: c.component as Database["public"]["Enums"]["component"], name: c.name, sku: c.sku, source: "brand", requested_at: new Date().toISOString(), requested_by: user.id };
+    } else {
+      insert = { ticket_id: input.ticketId, component: w.component, name: w.part_name!, source: "brand", requested_at: new Date().toISOString(), requested_by: user.id };
+    }
+    const { data: created, error: e2 } = await supabase.from("ticket_parts").insert(insert).select("id").single();
+    if (e2) return { ok: false, error: e2.message };
+    keep.add(created.id);
+    if (insert.part_id) {
+      const { error: e3 } = await supabase.rpc("consume_ticket_part", { p_row: created.id });
+      if (e3) return { ok: false, error: e3.message };
+    }
+  }
+  for (const r of existing.filter((x) => !keep.has(x.id))) {
+    if (r.stock_movement_id) {
+      const { error: e4 } = await supabase.rpc("release_ticket_part", { p_row: r.id });
+      if (e4) return { ok: false, error: e4.message };
+    }
+    await supabase.from("ticket_parts").delete().eq("id", r.id);
+  }
+
   if (input.repair_complete && !ctx.ticket.repair_complete) {
-    await ctx.supabase.from("ticket_events").insert({ ticket_id: input.ticketId, type: "repair_complete", actor_id: ctx.user.id, body: "marked the repair complete" });
+    await supabase.from("ticket_events").insert({ ticket_id: input.ticketId, type: "repair_complete", actor_id: user.id, body: "marked the repair complete" });
   }
   revalidatePath(`/service-center/tickets/${input.ticketId}`);
-  return { ok: true };
-}
-
-const benchPartInput = z.object({
-  ticketId: z.uuid(),
-  /** A catalog part that fits the watch, or a free-text name. */
-  partId: z.uuid().optional(),
-  name: z.string().trim().min(1).max(120).optional(),
-});
-
-/** "Add a part…": a part from the bench's own stock, used on this repair. Never touches Nodus stock. */
-export async function addBenchPart(raw: z.input<typeof benchPartInput>): Promise<SaveResult & { id?: string }> {
-  const parsed = benchPartInput.safeParse(raw);
-  if (!parsed.success || (!parsed.data.partId && !parsed.data.name)) return { ok: false, error: "Pick a part or type a name." };
-  const ctx = await loadForRepairEdit(parsed.data.ticketId);
-  if (!ctx.ok) return ctx;
-  let row: Database["public"]["Tables"]["ticket_parts"]["Insert"];
-  if (parsed.data.partId) {
-    const c = (await getPartsForWatch(ctx.ticket.watch_id)).find((x) => x.id === parsed.data.partId);
-    if (!c) return { ok: false, error: "That part doesn't fit this watch." };
-    row = { ticket_id: parsed.data.ticketId, part_id: c.id, component: c.component as Database["public"]["Enums"]["component"], name: c.name, sku: c.sku, source: "bench_stock", used_at: new Date().toISOString() };
-  } else {
-    row = { ticket_id: parsed.data.ticketId, name: parsed.data.name!, source: "bench_stock", used_at: new Date().toISOString() };
-  }
-  const { data, error } = await ctx.supabase.from("ticket_parts").insert(row).select("id").single();
-  if (error) return { ok: false, error: error.message };
-  revalidatePath(`/service-center/tickets/${parsed.data.ticketId}`);
-  return { ok: true, id: data.id };
-}
-
-const removePartInput = z.object({ ticketId: z.uuid(), rowId: z.uuid() });
-
-/** Remove a bench-stock part from the repair. Brand-shipped parts can't be removed here. */
-export async function removeBenchPart(raw: z.input<typeof removePartInput>): Promise<SaveResult> {
-  const parsed = removePartInput.safeParse(raw);
-  if (!parsed.success) return { ok: false, error: "Reload and try again." };
-  const ctx = await loadForRepairEdit(parsed.data.ticketId);
-  if (!ctx.ok) return ctx;
-  const { error } = await ctx.supabase.from("ticket_parts").delete().eq("id", parsed.data.rowId).eq("ticket_id", parsed.data.ticketId).eq("source", "bench_stock");
-  if (error) return { ok: false, error: error.message };
-  revalidatePath(`/service-center/tickets/${parsed.data.ticketId}`);
   return { ok: true };
 }

@@ -59,8 +59,8 @@ export async function CurrentStep({ t, role }: { t: TicketDetail; role: Role }) 
           ticketId={t.id}
           canEdit={canEdit}
           categories={asCategories(t.repair_categories)}
-          parts={t.parts.map((x) => ({ id: x.id, name: x.name, sku: x.sku, source: x.source as "brand" | "bench_stock", sent_at: x.sent_at }))}
-          catalogParts={catalogParts.map((c) => ({ id: c.id, name: c.name, sku: c.sku }))}
+          parts={t.parts.map((x) => ({ id: x.id, part_id: x.part_id, name: x.name, sku: x.sku, component: x.component, sent_at: x.sent_at, consumed: !!x.stock_movement_id }))}
+          catalogParts={catalogParts}
           solutionNotes={t.solution_notes}
           timeSpentMinutes={t.time_spent_minutes}
           coverage={t.coverage as "warranty" | "paid" | null}
