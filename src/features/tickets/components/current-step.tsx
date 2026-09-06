@@ -1,9 +1,10 @@
 import { STAGE_DEFINITIONS, canActOn, isLiveStage, type Role } from "@/features/pipeline";
-import { asCategories, asConditions, type TicketDetail } from "../detail";
+import { asCategories, asChecks, asConditions, type TicketDetail } from "../detail";
 import { getPartsForWatch, getPartsStock } from "../queries";
 import { InRepairForm } from "./in-repair-form";
 import { ReceivedForm } from "./received-form";
 import { RequestPartForm } from "./request-part-form";
+import { TestingForm } from "./testing-form";
 
 /** Picks the current stage's form. Stages without a form yet show a placeholder. */
 export async function CurrentStep({ t, role }: { t: TicketDetail; role: Role }) {
@@ -71,6 +72,10 @@ export async function CurrentStep({ t, role }: { t: TicketDetail; role: Role }) 
           requiresPayment={t.requires_payment}
         />
       );
+    }
+    case "testing": {
+      const c = asChecks(t.testing_checks);
+      return <TestingForm ticketId={t.id} canEdit={canEdit} complete={c.timekeeping && c.water_resistance && c.visual} notes={t.testing_notes} />;
     }
     default: {
       const name = STAGE_DEFINITIONS[t.stage].name;

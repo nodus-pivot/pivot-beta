@@ -423,3 +423,37 @@ export async function saveInRepair(raw: z.input<typeof repairInput>): Promise<Sa
   revalidatePath(`/service-center/tickets/${input.ticketId}`);
   return { ok: true };
 }
+
+/* ---------------------------------------------------------------- testing (1f) */
+
+const testingInput = z.object({
+  ticketId: z.uuid(),
+  complete: z.boolean(),
+  notes: z.string().trim().max(5000).nullable(),
+});
+
+/** Autosave for Testing. One checkbox covers the three checks the gate reads. */
+export async function saveTesting(raw: z.input<typeof testingInput>): Promise<SaveResult> {
+  const parsed = testingInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Reload and try again." };
+  const input = parsed.data;
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "You're signed out." };
+  if (!canActOn(user.profile.role, "testing")) return { ok: false, error: "Only the watchmaker edits this step." };
+  const supabase = await createClient();
+  const { data: t } = await supabase.from("tickets").select("stage, testing_checks").eq("id", input.ticketId).maybeSingle();
+  if (!t) return { ok: false, error: "Ticket not found." };
+  if (t.stage !== "testing") return { ok: false, error: "This ticket isn't in testing; reload the page." };
+  const wasComplete = (() => {
+    const c = t.testing_checks as Record<string, unknown> | null;
+    return !!c && c.timekeeping === true && c.water_resistance === true && c.visual === true;
+  })();
+  const checks = { timekeeping: input.complete, water_resistance: input.complete, visual: input.complete };
+  const { error } = await supabase.from("tickets").update({ testing_checks: checks, testing_notes: input.notes }).eq("id", input.ticketId);
+  if (error) return { ok: false, error: error.message };
+  if (input.complete && !wasComplete) {
+    await supabase.from("ticket_events").insert({ ticket_id: input.ticketId, type: "testing_complete", actor_id: user.id, body: "passed testing · timekeeping, water resistance, visual inspection" });
+  }
+  revalidatePath(`/service-center/tickets/${input.ticketId}`);
+  return { ok: true };
+}
