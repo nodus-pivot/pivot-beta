@@ -1,6 +1,7 @@
 import { STAGE_DEFINITIONS, canActOn, isLiveStage, type Role } from "@/features/pipeline";
 import { asConditions, type TicketDetail } from "../detail";
 import { ReceivedForm } from "./received-form";
+import { RequestPartForm } from "./request-part-form";
 
 /** Picks the current stage's form. Stages without a form yet show a placeholder. */
 export function CurrentStep({ t, role }: { t: TicketDetail; role: Role }) {
@@ -20,6 +21,21 @@ export function CurrentStep({ t, role }: { t: TicketDetail; role: Role }) {
           notes={t.intake_notes}
           brandName={t.brand.name}
           pendingParts={t.parts.filter((x) => x.source === "brand").map((x) => ({ name: x.name, sent_at: x.sent_at }))}
+        />
+      );
+    case "request_part":
+      return (
+        <RequestPartForm
+          ticketId={t.id}
+          canEdit={canEdit}
+          brandName={t.brand.name}
+          watchmakerName="The watchmaker"
+          parts={t.parts
+            .filter((x) => x.source === "brand")
+            .map((x) => ({ id: x.id, name: x.name, sku: x.sku, sent_at: x.sent_at, tracking_number: x.tracking_number }))}
+          requestedAt={t.parts_requested_at}
+          snoozedUntil={t.parts_reminder_snoozed_until}
+          shipTo={null}
         />
       );
     default: {

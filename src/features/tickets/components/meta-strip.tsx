@@ -1,4 +1,5 @@
 import { formatDate } from "@/lib/format";
+import { relativeAge } from "@/lib/labels";
 import type { TicketDetail } from "../detail";
 
 /** The hairline strip under the pipeline: Received · Est. done · Payment · Customer · Emails. */
@@ -14,7 +15,11 @@ export function MetaStrip({ t }: { t: TicketDetail }) {
   return (
     <dl className="flex flex-wrap gap-x-8 gap-y-2 border-t border-border pt-4 text-[13.5px]">
       <Item label="Received" value={formatDate(t.watch_received_at ?? t.created_at)} />
-      <Item label="Est. done" value={formatDate(t.estimated_done_at)} />
+      {t.stage === "request_part" && t.parts_requested_at ? (
+        <Item label="Requested" value={`${formatDate(t.parts_requested_at)} · waiting ${relativeAge(t.parts_requested_at)}`} tone="amber" />
+      ) : (
+        <Item label="Est. done" value={formatDate(t.estimated_done_at)} />
+      )}
       <Item label="Payment" value={payment} tone={t.requires_payment && t.payment_status !== "paid" ? "amber" : undefined} />
       <Item
         label="Customer"

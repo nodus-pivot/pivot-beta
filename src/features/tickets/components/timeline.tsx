@@ -18,6 +18,10 @@ function describe(e: TicketEvent): string {
     case "reopened": return `${who} reopened the ticket`;
     case "email_logged": return e.body ?? "Email logged";
     case "email_skipped": return e.body ?? "Email skipped";
+    case "watch_received":
+    case "parts_requested":
+    case "part_sent":
+    case "reminders_paused": return `${who} ${e.body ?? e.type.replace(/_/g, " ")}`;
     default: return e.body ?? e.type;
   }
 }

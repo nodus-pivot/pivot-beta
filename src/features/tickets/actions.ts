@@ -240,3 +240,81 @@ export async function requestPartsAction(raw: z.input<typeof requestPartsInput>)
   revalidatePath("/service-center", "layout");
   return { ok: true };
 }
+
+/* ---------------------------------------------------------------- request part (1d) */
+
+async function loadForPartsEdit(ticketId: string) {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false as const, error: "You're signed out." };
+  if (!canActOn(user.profile.role, "request_part")) return { ok: false as const, error: "Only the brand rep marks parts sent." };
+  const supabase = await createClient();
+  const { data: t } = await supabase.from("tickets").select("stage").eq("id", ticketId).maybeSingle();
+  if (!t) return { ok: false as const, error: "Ticket not found." };
+  if (t.stage !== "request_part") return { ok: false as const, error: "This ticket isn't waiting on parts; reload the page." };
+  return { ok: true as const, user, supabase };
+}
+
+const partSentInput = z.object({ ticketId: z.uuid(), partId: z.uuid(), sent: z.boolean() });
+
+/** Tick or untick one requested part as sent. */
+export async function savePartSent(raw: z.input<typeof partSentInput>): Promise<SaveResult> {
+  const parsed = partSentInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Reload and try again." };
+  const { ticketId, partId, sent } = parsed.data;
+  const ctx = await loadForPartsEdit(ticketId);
+  if (!ctx.ok) return ctx;
+  const { data: part } = await ctx.supabase.from("ticket_parts").select("name, sent_at").eq("id", partId).eq("ticket_id", ticketId).maybeSingle();
+  if (!part) return { ok: false, error: "Part not found." };
+  const { error } = await ctx.supabase
+    .from("ticket_parts")
+    .update({ sent_at: sent ? (part.sent_at ?? new Date().toISOString()) : null, sent_by: sent ? ctx.user.id : null })
+    .eq("id", partId);
+  if (error) return { ok: false, error: error.message };
+  if (sent && !part.sent_at) {
+    await ctx.supabase.from("ticket_events").insert({ ticket_id: ticketId, type: "part_sent", actor_id: ctx.user.id, body: `marked ${part.name} sent` });
+  }
+  revalidatePath(`/service-center/tickets/${ticketId}`);
+  return { ok: true };
+}
+
+const trackingInput = z.object({ ticketId: z.uuid(), tracking: z.string().trim().max(100).nullable() });
+
+/** One tracking number for the whole shipment, stored on every requested part. */
+export async function savePartsTracking(raw: z.input<typeof trackingInput>): Promise<SaveResult> {
+  const parsed = trackingInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Reload and try again." };
+  const ctx = await loadForPartsEdit(parsed.data.ticketId);
+  if (!ctx.ok) return ctx;
+  const { error } = await ctx.supabase
+    .from("ticket_parts")
+    .update({ tracking_number: parsed.data.tracking || null })
+    .eq("ticket_id", parsed.data.ticketId)
+    .eq("source", "brand");
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/service-center/tickets/${parsed.data.ticketId}`);
+  return { ok: true };
+}
+
+const pauseInput = z.object({ ticketId: z.uuid(), days: z.union([z.literal(3), z.literal(7), z.literal(14)]), reason: z.string().trim().max(500).nullable() });
+
+/** "Need more time?": stops the parts reminder nudges for a while (design 2s). */
+export async function pauseReminders(raw: z.input<typeof pauseInput>): Promise<SaveResult> {
+  const parsed = pauseInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Pick how long to pause." };
+  const { ticketId, days, reason } = parsed.data;
+  const ctx = await loadForPartsEdit(ticketId);
+  if (!ctx.ok) return ctx;
+  const until = new Date(Date.now() + days * 86_400_000).toISOString();
+  const { error } = await ctx.supabase.from("tickets").update({ parts_reminder_snoozed_until: until }).eq("id", ticketId);
+  if (error) return { ok: false, error: error.message };
+  const span = days === 3 ? "3 days" : days === 7 ? "1 week" : "2 weeks";
+  await ctx.supabase.from("ticket_events").insert({
+    ticket_id: ticketId,
+    type: "reminders_paused",
+    actor_id: ctx.user.id,
+    body: `paused parts reminders for ${span}${reason ? ` · ${reason}` : ""}`,
+    payload: { until, days, reason },
+  });
+  revalidatePath(`/service-center/tickets/${ticketId}`);
+  return { ok: true };
+}
