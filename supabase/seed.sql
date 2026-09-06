@@ -72,10 +72,11 @@ on conflict (id) do nothing;
 -- DEMO DATA. One ticket per live stage so the Service Center sidebar has
 -- something to show. Names and models follow the mockups. Inserted as the
 -- seed role, so stage is written directly (the app goes through set_stage).
--- Demo tickets are deleted and reinserted so their timestamps stay fresh
--- relative to now() (updated_at cannot be set through an update).
+-- Demo tickets are upserted in place (never deleted) so stock-ledger rows
+-- keep pointing at them. The updated_at trigger is paused for the upsert so
+-- the ages stay relative to now().
 
-delete from tickets where id between 'a0000000-0000-4000-8000-000000000401' and 'a0000000-0000-4000-8000-000000000406';
+alter table tickets disable trigger tickets_updated_at;
 
 insert into tickets (id, ticket_number, workspace_id, brand_id, stage, customer_name, customer_email, watch_id, watch_serial,
                      issue_description, priority, requires_payment, watch_received_at, intake_components, repair_categories,
@@ -114,7 +115,16 @@ values
    '[{"component": "clasp", "conditions": ["Lightly worn"]}]',
    '[{"component": "clasp", "action": "repair"}]',
    true, '{"timekeeping": true, "water_resistance": true, "visual": true}', now() - interval '30 days', now() - interval '42 days', now() - interval '30 days', null)
-;
+
+on conflict (id) do update set
+  stage = excluded.stage, customer_name = excluded.customer_name, customer_email = excluded.customer_email,
+  watch_id = excluded.watch_id, watch_serial = excluded.watch_serial, issue_description = excluded.issue_description,
+  priority = excluded.priority, requires_payment = excluded.requires_payment, watch_received_at = excluded.watch_received_at,
+  intake_components = excluded.intake_components, repair_categories = excluded.repair_categories,
+  repair_complete = excluded.repair_complete, testing_checks = excluded.testing_checks, closed_at = excluded.closed_at,
+  created_at = excluded.created_at, updated_at = excluded.updated_at, parts_requested_at = excluded.parts_requested_at;
+
+alter table tickets enable trigger tickets_updated_at;
 
 -- Parts demand from the diagnoses. James waits on two; Adam's and Sarah's were shipped already.
 insert into ticket_parts (id, ticket_id, part_id, component, name, sku, source, requested_at, sent_at)
@@ -128,7 +138,8 @@ values
   ('a0000000-0000-4000-8000-000000000503', 'a0000000-0000-4000-8000-000000000403', 'a0000000-0000-4000-8000-000000000203',
    'bezel_insert', 'Bezel insert, ceramic', 'BZ-SD-CER', 'brand', now() - interval '9 days', now() - interval '8 days'),
   ('a0000000-0000-4000-8000-000000000504', 'a0000000-0000-4000-8000-000000000404', 'a0000000-0000-4000-8000-000000000205',
-   'gaskets', 'Gasket set', 'GK-UNI-01', 'brand', now() - interval '13 days', now() - interval '12 days');
+   'gaskets', 'Gasket set', 'GK-UNI-01', 'brand', now() - interval '13 days', now() - interval '12 days')
+on conflict (id) do nothing;
 
 insert into ticket_events (id, ticket_id, type, to_stage, created_at)
 select gen_random_uuid(), id, 'created', 'intake', created_at from tickets

@@ -123,7 +123,8 @@ export default async function PartPage({ params }: Params) {
                 <th className="bg-surface px-4 py-2 font-medium">When</th>
                 <th className="bg-surface px-3 py-2 text-right font-medium">Change</th>
                 <th className="bg-surface px-3 py-2 font-medium">Reason</th>
-                <th className="bg-surface px-3 py-2 font-medium">Ticket / note</th>
+                <th className="bg-surface px-3 py-2 font-medium">Ticket</th>
+                <th className="bg-surface px-3 py-2 font-medium">Note</th>
                 {showCost && <th className="bg-surface px-3 py-2 text-right font-medium">Unit cost</th>}
                 <th className="bg-surface px-3 py-2 font-medium">By</th>
               </tr>
@@ -135,19 +136,25 @@ export default async function PartPage({ params }: Params) {
                   <td className={`border-t border-border px-3 py-2 text-right font-mono tabular-nums ${l.qty_delta < 0 ? "text-amber" : "text-green"}`}>{l.qty_delta > 0 ? `+${l.qty_delta}` : l.qty_delta}</td>
                   <td className="border-t border-border px-3 py-2 text-text-2">{REASONS[l.reason] ?? l.reason}</td>
                   <td className="border-t border-border px-3 py-2 text-[13.5px] text-text-2">
-                    {l.ticket && (
-                      <Link href={`/service-center/tickets/${l.ticket.id}`} className="font-mono text-[13px] text-accent-text hover:underline">{l.ticket.ticket_number}</Link>
+                    {l.ticket ? (
+                      <Link href={`/service-center/tickets/${l.ticket.id}`} className="hover:text-accent-text">
+                        <span className="font-mono text-[13px] text-accent-text">{l.ticket.ticket_number}</span>
+                        {l.ticket.customer_name && <span className="ml-2">{l.ticket.customer_name}</span>}
+                      </Link>
+                    ) : l.reason === "used_on_ticket" || l.reason === "returned" ? (
+                      <span className="text-text-3" title="The ticket was deleted">ticket removed</span>
+                    ) : (
+                      <span className="text-text-3">—</span>
                     )}
-                    {l.ticket?.customer_name && <span className="ml-2">{l.ticket.customer_name}</span>}
-                    {l.note && <span className={l.ticket ? "ml-2 text-text-3" : "text-text-3"}>{l.note}</span>}
                   </td>
+                  <td className="border-t border-border px-3 py-2 text-[13.5px] text-text-3">{l.note ?? "—"}</td>
                   {showCost && <td className="border-t border-border px-3 py-2 text-right font-mono tabular-nums text-text-3">{l.unit_cost_at_time != null ? money.format(l.unit_cost_at_time) : "—"}</td>}
                   <td className="border-t border-border px-3 py-2 text-[13.5px] text-text-3">{l.actor ?? "—"}</td>
                 </tr>
               ))}
               {part.ledger.length === 0 && (
                 <tr>
-                  <td colSpan={showCost ? 6 : 5} className="border-t border-border px-4 py-6 text-center text-text-3">No movements yet.</td>
+                  <td colSpan={showCost ? 7 : 6} className="border-t border-border px-4 py-6 text-center text-text-3">No movements yet.</td>
                 </tr>
               )}
             </tbody>
