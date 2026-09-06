@@ -10,12 +10,14 @@ const base = {
   parts: [{ source: "brand", name: "Insert", sent_at: null }, { source: "bench_stock", name: "Gasket", sent_at: null }],
   shipments: [{ direction: "outbound", tracking_number: "94001", label_path: null, carrier_code: "usps" }],
   events: [{ to_stage: "send_return_label" }],
+  stock: {},
+  orders: {},
 } as unknown as TicketDetail;
 
 describe("toPipelineTicket", () => {
   it("maps rows and jsonb onto the pipeline shape", () => {
     const pt = toPipelineTicket(base);
-    expect(pt.requested_parts).toEqual([{ name: "Insert", sent_at: null }]);
+    expect(pt.requested_parts).toEqual([{ name: "Insert", sent_at: null, in_stock: null }]);
     expect(pt.repair_categories).toEqual([
       { component: "bezel_insert", action: "replace", variant: "ceramic" },
       { component: "junk", action: undefined, variant: undefined },

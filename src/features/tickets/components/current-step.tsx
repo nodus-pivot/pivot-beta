@@ -45,6 +45,9 @@ export async function CurrentStep({ t, role }: { t: TicketDetail; role: Role }) 
             sent_at: x.sent_at,
             tracking_number: x.tracking_number,
             stock: x.part_id ? stock[x.part_id] : undefined,
+            available: x.part_id ? (t.stock[x.part_id] ?? 0) >= x.qty : null,
+            order: x.part_id ? t.orders[x.part_id] : undefined,
+            opsHref: x.part_id ? `/ops/parts/${x.part_id}` : undefined,
           }))}
           requestedAt={t.parts_requested_at}
           snoozedUntil={t.parts_reminder_snoozed_until}

@@ -65,7 +65,7 @@ export async function getIntakeCatalog(workspaceId: string): Promise<{ brands: C
   };
 }
 
-import type { TicketDetail, TicketEvent } from "./detail";
+import type { OpenOrder, TicketDetail, TicketEvent } from "./detail";
 
 /** The full ticket for the detail page, or null when it doesn't exist or is out of scope. */
 export async function getTicketDetail(id: string): Promise<TicketDetail | null> {
@@ -86,6 +86,17 @@ export async function getTicketDetail(id: string): Promise<TicketDetail | null> 
     .order("created_at");
 
   const { watches, brands, ticket_parts, shipments, ...row } = t;
+  const partIds = ticket_parts.map((p) => p.part_id).filter((id): id is string => !!id);
+  const stock: Record<string, number> = {};
+  const orders: Record<string, OpenOrder> = {};
+  if (partIds.length) {
+    const [{ data: levels }, { data: open }] = await Promise.all([
+      supabase.from("parts_stock").select("part_id, stock_qty").in("part_id", partIds),
+      supabase.from("part_orders").select("part_id, ordered_at, expected_at, qty").in("part_id", partIds).is("received_at", null).order("ordered_at"),
+    ]);
+    for (const l of levels ?? []) if (l.part_id) stock[l.part_id] = l.stock_qty ?? 0;
+    for (const o of open ?? []) if (!orders[o.part_id]) orders[o.part_id] = { ordered_at: o.ordered_at, expected_at: o.expected_at, qty: o.qty };
+  }
   return {
     ...row,
     watch: watches,
@@ -93,6 +104,8 @@ export async function getTicketDetail(id: string): Promise<TicketDetail | null> 
     parts: ticket_parts,
     shipments,
     events: (events ?? []).map((e): TicketEvent => ({ ...e, actor: e.actor ?? null })),
+    stock,
+    orders,
   };
 }
 

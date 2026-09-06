@@ -37,7 +37,8 @@ values
   ('a0000000-0000-4000-8000-000000000202', 'a0000000-0000-4000-8000-000000000001', 'CR-SD-01',  'Crown, signed',         'crown_tube',  12.00, 4),
   ('a0000000-0000-4000-8000-000000000203', 'a0000000-0000-4000-8000-000000000001', 'BZ-SD-CER', 'Bezel insert, ceramic', 'bezel_insert', 52.00, 2),
   ('a0000000-0000-4000-8000-000000000204', 'a0000000-0000-4000-8000-000000000001', 'MV-NH35',   'NH35 movement',         'movement',    45.00, 3),
-  ('a0000000-0000-4000-8000-000000000205', 'a0000000-0000-4000-8000-000000000001', 'GK-UNI-01', 'Gasket set',            'gaskets',     3.00,  15)
+  ('a0000000-0000-4000-8000-000000000205', 'a0000000-0000-4000-8000-000000000001', 'GK-UNI-01', 'Gasket set',            'gaskets',     3.00,  15),
+  ('a0000000-0000-4000-8000-000000000206', 'a0000000-0000-4000-8000-000000000001', 'DL-AV2-01', 'Dial, Avalon II',       'dial',        60.00, 2)
 on conflict (id) do nothing;
 
 -- Which parts fit which watch. The movement and gaskets fit both.
@@ -49,7 +50,8 @@ values
   ('a0000000-0000-4000-8000-000000000101', 'a0000000-0000-4000-8000-000000000204'),
   ('a0000000-0000-4000-8000-000000000101', 'a0000000-0000-4000-8000-000000000205'),
   ('a0000000-0000-4000-8000-000000000102', 'a0000000-0000-4000-8000-000000000204'),
-  ('a0000000-0000-4000-8000-000000000102', 'a0000000-0000-4000-8000-000000000205')
+  ('a0000000-0000-4000-8000-000000000102', 'a0000000-0000-4000-8000-000000000205'),
+  ('a0000000-0000-4000-8000-000000000102', 'a0000000-0000-4000-8000-000000000206')
 on conflict do nothing;
 
 -- Opening stock counts (the ledger's first entry per part).
@@ -60,6 +62,10 @@ values
   ('a0000000-0000-4000-8000-000000000303', 'a0000000-0000-4000-8000-000000000203', 3,  'initial_count', 52.00, 'demo seed'),
   ('a0000000-0000-4000-8000-000000000304', 'a0000000-0000-4000-8000-000000000204', 4,  'initial_count', 45.00, 'demo seed'),
   ('a0000000-0000-4000-8000-000000000305', 'a0000000-0000-4000-8000-000000000205', 40, 'initial_count', 3.00,  'demo seed')
+on conflict (id) do nothing;
+-- The Avalon II dial has no stock; Ops has one on order (recorded in part_orders).
+insert into part_orders (id, part_id, qty, ordered_at, expected_at, note)
+values ('a0000000-0000-4000-8000-000000000601', 'a0000000-0000-4000-8000-000000000206', 5, current_date - 3, current_date + 10, 'demo seed')
 on conflict (id) do nothing;
 
 -- ---------------------------------------------------------------- demo tickets
@@ -82,7 +88,7 @@ values
   ('a0000000-0000-4000-8000-000000000402', 'NW260038', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000011',
    'request_part', 'James Whitfield', 'james@example.com', 'a0000000-0000-4000-8000-000000000102', '204056',
    'Crown fell off while setting the time.', false, false, now() - interval '6 days',
-   '[{"component": "crown_tube", "conditions": ["Cracked"]}]', '[{"component": "crown_tube", "action": "replace"}, {"component": "movement", "action": "replace"}]',
+   '[{"component": "crown_tube", "conditions": ["Cracked"]}, {"component": "dial", "conditions": ["Scratches"]}]', '[{"component": "crown_tube", "action": "replace"}, {"component": "movement", "action": "replace"}, {"component": "dial", "action": "replace"}]',
    false, '{"timekeeping": false, "water_resistance": false, "visual": false}', null, now() - interval '7 days', now() - interval '5 days', now() - interval '5 days'),
   ('a0000000-0000-4000-8000-000000000403', 'NW260035', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000011',
    'in_repair', 'Adam Ferguson', 'adam@example.com', 'a0000000-0000-4000-8000-000000000101', '506269',
@@ -117,6 +123,8 @@ values
    'movement', 'NH35 movement', 'MV-NH35', 'brand', now() - interval '5 days', null),
   ('a0000000-0000-4000-8000-000000000502', 'a0000000-0000-4000-8000-000000000402', 'a0000000-0000-4000-8000-000000000202',
    'crown_tube', 'Crown, signed', 'CR-SD-01', 'brand', now() - interval '5 days', null),
+  ('a0000000-0000-4000-8000-000000000505', 'a0000000-0000-4000-8000-000000000402', 'a0000000-0000-4000-8000-000000000206',
+   'dial', 'Dial, Avalon II', 'DL-AV2-01', 'brand', now() - interval '5 days', null),
   ('a0000000-0000-4000-8000-000000000503', 'a0000000-0000-4000-8000-000000000403', 'a0000000-0000-4000-8000-000000000203',
    'bezel_insert', 'Bezel insert, ceramic', 'BZ-SD-CER', 'brand', now() - interval '9 days', now() - interval '8 days'),
   ('a0000000-0000-4000-8000-000000000504', 'a0000000-0000-4000-8000-000000000404', 'a0000000-0000-4000-8000-000000000205',

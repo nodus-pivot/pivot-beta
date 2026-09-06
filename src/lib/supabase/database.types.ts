@@ -115,6 +115,74 @@ export type Database = {
           },
         ]
       }
+      part_orders: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          expected_at: string | null
+          id: string
+          note: string | null
+          ordered_at: string
+          part_id: string
+          qty: number
+          received_at: string | null
+          stock_movement_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          expected_at?: string | null
+          id?: string
+          note?: string | null
+          ordered_at?: string
+          part_id: string
+          qty: number
+          received_at?: string | null
+          stock_movement_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          expected_at?: string | null
+          id?: string
+          note?: string | null
+          ordered_at?: string
+          part_id?: string
+          qty?: number
+          received_at?: string | null
+          stock_movement_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "part_orders_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_orders_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_orders_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts_for_bench"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_orders_stock_movement_id_fkey"
+            columns: ["stock_movement_id"]
+            isOneToOne: false
+            referencedRelation: "stock_movements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       parts: {
         Row: {
           component: Database["public"]["Enums"]["component"]

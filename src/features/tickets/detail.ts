@@ -27,12 +27,18 @@ export type TicketEvent = {
 };
 
 /** Everything the ticket page needs, loaded once. */
+export type OpenOrder = { ordered_at: string; expected_at: string | null; qty: number };
+
 export type TicketDetail = TicketRow & {
   watch: { model: string; reference: string | null; warranty_months: number | null };
   brand: { name: string };
   parts: PartRow[];
   shipments: ShipmentRow[];
   events: TicketEvent[];
+  /** Units on hand per catalog part referenced by this ticket (readable by every role). */
+  stock: Record<string, number>;
+  /** Open reorders per catalog part, recorded in Ops. */
+  orders: Record<string, OpenOrder>;
 };
 
 /* ---------------------------------------------------------------- adapters */
@@ -46,7 +52,9 @@ export function toPipelineTicket(t: TicketDetail): PipelineTicket {
     issue_description: t.issue_description,
     watch_received_at: t.watch_received_at,
     intake_components: asConditions(t.intake_components),
-    requested_parts: t.parts.filter((p) => p.source === "brand").map((p) => ({ name: p.name, sent_at: p.sent_at })),
+    requested_parts: t.parts
+      .filter((p) => p.source === "brand")
+      .map((p) => ({ name: p.name, sent_at: p.sent_at, in_stock: p.part_id ? (t.stock[p.part_id] ?? 0) >= p.qty : null })),
     repair_categories: asCategories(t.repair_categories),
     repair_complete: t.repair_complete,
     testing_checks: asChecks(t.testing_checks),

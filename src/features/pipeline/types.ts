@@ -41,8 +41,11 @@ export type TestingChecks = { timekeeping: boolean; water_resistance: boolean; v
 
 export type PaymentStatus = "none" | "invoiced" | "paid";
 
-/** A part the watchmaker asked the brand to send (ticket_parts with source 'brand'). */
-export type RequestedPart = { name: string; sent_at: string | null };
+/**
+ * A part the diagnosis needs from the brand (ticket_parts with source 'brand').
+ * in_stock is null when the part isn't in the catalog (nothing to check).
+ */
+export type RequestedPart = { name: string; sent_at: string | null; in_stock?: boolean | null };
 
 export type PipelineTicket = {
   stage: Stage | LegacyStage;

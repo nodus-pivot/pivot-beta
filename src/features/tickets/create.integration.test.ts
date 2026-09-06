@@ -101,7 +101,7 @@ describe.skipIf(!enabled)("createTicket (integration)", () => {
       const { data } = await db.from("tickets").select("*, watches(model, reference, warranty_months), brands(name), ticket_parts(*), shipments(*)").eq("id", t.id).single();
       const { data: events } = await db.from("ticket_events").select("id, type, body, from_stage, to_stage, payload, created_at").eq("ticket_id", t.id).order("created_at");
       const { watches, brands, ticket_parts, shipments, ...row } = data!;
-      return { ...row, watch: watches, brand: brands, parts: ticket_parts, shipments, events: (events ?? []).map((e) => ({ ...e, actor: null })) };
+      return { ...row, watch: watches, brand: brands, parts: ticket_parts, shipments, events: (events ?? []).map((e) => ({ ...e, actor: null })), stock: {}, orders: {} };
     };
 
     const back = sendBack(toPipelineTicket(await load()), "workspace_admin", settings);
@@ -134,7 +134,7 @@ describe.skipIf(!enabled)("createTicket (integration)", () => {
     await db.from("tickets").update({ watch_received_at: new Date().toISOString(), repair_categories: [{ component: "crown_tube", action: "replace" }] }).eq("id", t.id);
     const { data: parts } = await db.from("ticket_parts").select("*").eq("ticket_id", t.id);
     const { data: row } = await db.from("tickets").select("*").eq("id", t.id).single();
-    const pt = toPipelineTicket({ ...row!, watch: { model: "", reference: null, warranty_months: null }, brand: { name: "" }, parts: parts ?? [], shipments: [], events: [] });
+    const pt = toPipelineTicket({ ...row!, watch: { model: "", reference: null, warranty_months: null }, brand: { name: "" }, parts: parts ?? [], shipments: [], events: [], stock: {}, orders: {} });
     const r = advance(pt, "workspace_admin", { sendReturnLabelEnabled: false });
     expect(r).toMatchObject({ ok: true, to: "request_part" });
     if (r.ok) await applyTransition(db, t.id, userId, r, false);

@@ -45,6 +45,13 @@ describe("missingFor", () => {
   it("every stage after intake needs an email on file", () => {
     expect(missingFor(blankTicket({ stage: "testing", customer_email: "" }), "watchmaker")).toContain("customer email");
   });
+  it("request part parks the ticket while a needed part is out of stock", () => {
+    const t = blankTicket({
+      stage: "request_part",
+      requested_parts: [{ name: "Crown", sent_at: null, in_stock: false }, { name: "Insert", sent_at: null, in_stock: true }, { name: "Custom dial", sent_at: null, in_stock: null }],
+    });
+    expect(missingFor(t, "brand_rep")).toEqual(["Crown out of stock", "3 parts not sent"]);
+  });
   it("request part counts unsent parts", () => {
     const t = blankTicket({
       stage: "request_part",

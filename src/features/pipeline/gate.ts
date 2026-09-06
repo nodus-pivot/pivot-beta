@@ -43,6 +43,9 @@ export function missingFor(ticket: PipelineTicket, role: Role, opts: GateOptions
 
     case "request_part": {
       const unsent = ticket.requested_parts.filter((p) => !p.sent_at);
+      // Out of stock parks the ticket here; nobody reorders from a ticket, Ops does.
+      const out = unsent.filter((p) => p.in_stock === false);
+      if (out.length > 0) missing.push(`${out.map((p) => p.name).join(", ")} out of stock`);
       if (unsent.length > 0) missing.push(`${unsent.length} part${unsent.length === 1 ? "" : "s"} not sent`);
       break;
     }

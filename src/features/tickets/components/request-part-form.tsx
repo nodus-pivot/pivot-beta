@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import Link from "next/link";
 import { formatDate } from "@/lib/format";
 import { pauseReminders, savePartSent, savePartsTracking } from "../actions";
 import { ghostBtn, primaryBtn } from "./confirm-advance-dialog";
@@ -13,8 +14,14 @@ type Part = {
   sku: string | null;
   sent_at: string | null;
   tracking_number: string | null;
-  /** Owners see supply; others get undefined. Stock is not touched until "All sent". */
+  /** Owners see the count; others get undefined. */
   stock?: { qty: number; reorder_at: number };
+  /** Everyone sees availability. null = not a catalog part, nothing to check. */
+  available: boolean | null;
+  /** Open reorder recorded in Ops, if any. */
+  order?: { ordered_at: string; expected_at: string | null; qty: number };
+  /** The part's page in Ops (built later; the link is in place now). */
+  opsHref?: string;
 };
 
 type Props = {
@@ -93,12 +100,26 @@ export function RequestPartForm(p: Props) {
                   {part.name}
                   {part.sku && <span className="ml-2 font-mono text-[13px] text-text-3">{part.sku}</span>}
                 </span>
-                {part.stock && (
+                {part.available === null && <span className="text-[13px] text-text-3">not in catalog</span>}
+                {part.available === false && !part.sent_at && (
+                  <span className="text-[13px] text-amber">
+                    Out of stock
+                    {part.order
+                      ? ` · on order since ${formatDate(part.order.ordered_at)}${part.order.expected_at ? `, expected ${formatDate(part.order.expected_at)}` : ""}`
+                      : " · not on order"}
+                  </span>
+                )}
+                {part.available === true && part.stock && !part.sent_at && (
                   <span className={`text-[13px] ${part.stock.qty <= part.stock.reorder_at ? "text-amber" : "text-text-3"}`}>
                     {part.stock.qty} in stock · reorder at {part.stock.reorder_at}
                   </span>
                 )}
-                {!part.stock && !part.sku && <span className="text-[13px] text-text-3">not in catalog</span>}
+                {part.available === true && !part.stock && !part.sent_at && <span className="text-[13px] text-text-3">In stock</span>}
+                {part.opsHref && !part.sent_at && (
+                  <Link href={part.opsHref} className="text-[13px] text-accent-text hover:underline">
+                    {part.available === false && !part.order ? "Reorder in Ops →" : "Ops →"}
+                  </Link>
+                )}
                 {part.sent_at && <span className="text-[13px] text-green">Sent {formatDate(part.sent_at)}</span>}
               </label>
             </li>
@@ -148,9 +169,14 @@ export function RequestPartForm(p: Props) {
         <span className="text-text-3">· Notes to {p.watchmakerName} go in the timeline below</span>
       </div>
 
+      {parts.some((x) => x.available === false && !x.sent_at) && (
+        <p className="rounded-lg border border-amber-border bg-amber-bg px-3 py-2 text-[13.5px] text-amber">
+          This ticket is parked until the out-of-stock part comes in. Reorders are placed and received in Ops, and the line above updates on its own.
+        </p>
+      )}
       {unsent > 0 && parts.length > 0 && (
         <p className="text-[13.5px] text-text-3">
-          {unsent} of {parts.length} still to send. Once every part is ticked, “All sent” hands the ticket back and takes the parts out of stock.
+          {unsent} of {parts.length} still to send. Once every part is ticked and in stock, “All sent” hands the ticket back to the bench.
         </p>
       )}
       {error && <p className="text-[13px] text-red">{error}</p>}
