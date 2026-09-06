@@ -142,6 +142,42 @@ describe.skipIf(!enabled)("createTicket (integration)", () => {
     expect(after?.parts_requested_at).not.toBeNull();
   });
 
+  it("'All sent' takes requested catalog parts out of stock, once", async () => {
+    await signIn();
+    const NH35 = "a0000000-0000-4000-8000-000000000204";
+    const before = (await db.from("parts_stock").select("stock_qty").eq("part_id", NH35).single()).data?.stock_qty ?? 0;
+    const t = await createTicket(
+      db,
+      { workspaceId: NODUS, ticketPrefix: "NW", actorId: userId },
+      {
+        customer_name: "Stock Test", customer_email: "stock@example.com", customer_phone: null,
+        brand_id: NODUS_BRAND, watch_id: SECTOR_DEEP, watch_serial: null,
+        issue_description: "stock test", return_address: { line1: null, line2: null, city: null, state: null, postal_code: null, country: null },
+        requires_payment: false, priority: false, send_email: false,
+      },
+    );
+    created.push(t.id);
+    await db.from("ticket_parts").insert({ ticket_id: t.id, part_id: NH35, component: "movement", name: "NH35 movement", sku: "MV-NH35", source: "brand", requested_at: new Date().toISOString(), requested_by: userId });
+    await db.rpc("set_stage", { p_ticket: t.id, p_to: "request_part" });
+    await db.from("ticket_parts").update({ sent_at: new Date().toISOString(), sent_by: userId }).eq("ticket_id", t.id);
+    const { error } = await db.rpc("set_stage", { p_ticket: t.id, p_to: "in_repair" });
+    expect(error).toBeNull();
+
+    const after = (await db.from("parts_stock").select("stock_qty").eq("part_id", NH35).single()).data?.stock_qty ?? 0;
+    expect(after).toBe(before - 1);
+    const { data: part } = await db.from("ticket_parts").select("stock_movement_id").eq("ticket_id", t.id).single();
+    expect(part?.stock_movement_id).not.toBeNull();
+
+    // Sending back and forward again must not consume a second unit.
+    await db.rpc("set_stage", { p_ticket: t.id, p_to: "request_part", p_kind: "sent_back" });
+    await db.rpc("set_stage", { p_ticket: t.id, p_to: "in_repair" });
+    const again = (await db.from("parts_stock").select("stock_qty").eq("part_id", NH35).single()).data?.stock_qty ?? 0;
+    expect(again).toBe(before - 1);
+
+    // Put the unit back so the demo stock stays at its seeded level.
+    await db.from("stock_movements").insert({ part_id: NH35, qty_delta: 1, reason: "returned", ticket_id: t.id, note: "integration test cleanup" });
+  });
+
   it("refuses a watch that isn't sold under the chosen brand", async () => {
     await signIn();
     await expect(

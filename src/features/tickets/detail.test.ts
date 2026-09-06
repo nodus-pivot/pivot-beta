@@ -37,6 +37,6 @@ describe("stageSummaryLine", () => {
     expect(stageSummaryLine("in_repair", base)).toBe("Replace — Bezel/Insert (ceramic); ? — junk · Resealed · 1h 30m · Yes");
   });
   it("summarizes received with conditions", () => {
-    expect(stageSummaryLine("received", base)).toBe("Sep 1 · Bezel (Cracked)");
+    expect(stageSummaryLine("received", base)).toBe("Sep 1 · Bezel (Cracked) · Insert");
   });
 });

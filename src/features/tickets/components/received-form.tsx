@@ -3,14 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { Plus } from "@phosphor-icons/react";
-import {
-  COMPONENTS,
-  COMPONENT_LABELS,
-  INTAKE_COMPONENTS,
-  INTAKE_CONDITIONS,
-  type Component,
-  type IntakeCondition,
-} from "@/features/pipeline";
+import { INTAKE_COMPONENTS, INTAKE_CONDITIONS, type IntakeCondition } from "@/features/pipeline";
 import { formatDate } from "@/lib/format";
 import { requestPartsAction, saveReceived } from "../actions";
 import { useStageAction } from "./stage-action-context";
@@ -25,18 +18,16 @@ type Props = {
   notes: string | null;
   /** Whose inventory the parts come from; the rep at that brand ships them. */
   brandName: string;
-  /** Parts already requested on this ticket (a pending request from an earlier pass). */
-  pendingParts: { name: string; sent_at: string | null }[];
+  /** Catalog parts that fit this watch (name + SKU; the bench never sees cost or stock). */
+  catalogParts: { id: string; name: string; sku: string }[];
+  /** Parts already on the request. Unsent ones are the current selection; sent ones are locked. */
+  pendingParts: { id: string; part_id: string | null; name: string; sent_at: string | null }[];
 };
 
 type Status = "idle" | "saving" | "saved" | "error";
 
 const label = "block text-[13.5px] font-medium text-text-2";
 const hint = "ml-2 text-[13px] font-normal text-text-3";
-const pill = (on: boolean, disabled: boolean) =>
-  `rounded-full border px-3 py-1 text-[13.5px] transition-colors ${
-    on ? "border-accent bg-accent-900 text-accent-text" : "border-border-strong text-text-2 hover:border-accent-text"
-  } ${disabled ? "cursor-default opacity-50 hover:border-border-strong" : ""}`;
 
 /** Received & Diagnostics (design 1c). Autosaves on every change; no Save button. */
 export function ReceivedForm(p: Props) {
@@ -45,7 +36,10 @@ export function ReceivedForm(p: Props) {
   const [receivedAt, setReceivedAt] = useState(p.receivedAt);
   const [grid, setGrid] = useState<IntakeCondition[]>(p.conditions);
   const [notes, setNotes] = useState(p.notes ?? "");
-  const [parts, setParts] = useState<Component[]>([]);
+  const [partIds, setPartIds] = useState<string[]>(p.pendingParts.filter((x) => !x.sent_at && x.part_id).map((x) => x.part_id as string));
+  const [other, setOther] = useState<string[]>(p.pendingParts.filter((x) => !x.sent_at && !x.part_id).map((x) => x.name));
+  const [otherDraft, setOtherDraft] = useState("");
+  const sentParts = p.pendingParts.filter((x) => x.sent_at);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -88,26 +82,37 @@ export function ReceivedForm(p: Props) {
     persist({ received, grid: next, notes });
   }
 
-  function togglePart(c: Component) {
-    setParts((ps) => (ps.includes(c) ? ps.filter((x) => x !== c) : [...ps, c]));
+  function togglePart(id: string) {
+    setPartIds((ps) => (ps.includes(id) ? ps.filter((x) => x !== id) : [...ps, id]));
+  }
+
+  function addOther() {
+    const name = otherDraft.trim();
+    if (!name) return;
+    if (!other.some((o) => o.toLowerCase() === name.toLowerCase())) setOther((os) => [...os, name]);
+    setOtherDraft("");
   }
 
   // Picked parts turn the frame's primary action into the parts request (one button, two destinations).
+  const selectedNames = [...partIds.map((id) => p.catalogParts.find((c) => c.id === id)?.name ?? "?"), ...other];
+  const originalIds = p.pendingParts.filter((x) => !x.sent_at && x.part_id).map((x) => x.part_id as string);
+  const originalOther = p.pendingParts.filter((x) => !x.sent_at && !x.part_id).map((x) => x.name);
+  const unchanged = sameSet(partIds, originalIds) && sameSet(other, originalOther);
   useEffect(() => {
-    if (parts.length === 0) {
+    if (selectedNames.length === 0 || (unchanged && originalIds.length + originalOther.length > 0)) {
       setOverride(null);
       return;
     }
-    const names = parts.map((c) => COMPONENT_LABELS[c]).join(", ");
     const ticketId = p.ticketId;
     setOverride({
       label: `Request parts from ${p.brandName} → Request Part`,
       nextName: "Request Part",
-      summaryExtra: [{ label: "Parts requested", value: `${names} · for ${p.watchModel}` }],
-      run: () => requestPartsAction({ ticketId, components: parts }),
+      summaryExtra: [{ label: "Parts requested", value: `${selectedNames.join(", ")} · for ${p.watchModel}` }],
+      run: () => requestPartsAction({ ticketId, partIds, other }),
     });
     return () => setOverride(null);
-  }, [parts, p.ticketId, p.brandName, p.watchModel, setOverride]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partIds.join(","), other.join("|"), p.ticketId, p.brandName, p.watchModel, setOverride]);
 
   const dis = !p.canEdit;
 
@@ -205,21 +210,63 @@ export function ReceivedForm(p: Props) {
         <span className={label}>
           Need a part from {p.brandName}?<span className={hint}>tap what you need · optional</span>
         </span>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {COMPONENTS.map((c) => (
-            <button key={c} type="button" disabled={dis} aria-pressed={parts.includes(c)} onClick={() => togglePart(c)} className={pill(parts.includes(c), dis)}>
-              {COMPONENT_LABELS[c]}
-            </button>
-          ))}
-        </div>
-        {parts.length > 0 && (
-          <p className="mt-3 text-[13.5px] text-text-3">
-            {parts.map((c) => COMPONENT_LABELS[c]).join(", ")} · for {p.watchModel}. Use the button below to send the request.
-          </p>
+        {p.catalogParts.length === 0 && (
+          <p className="mt-3 text-[13.5px] text-text-3">No catalog parts are linked to {p.watchModel} yet. Use “Something else” below.</p>
         )}
-        {p.pendingParts.length > 0 && (
-          <p className="mt-3 rounded-lg border border-amber-border bg-amber-bg px-3 py-2 text-[13.5px] text-amber">
-            Already requested from {p.brandName}: {p.pendingParts.map((x) => `${x.name}${x.sent_at ? " (sent)" : ""}`).join(", ")}. Continue goes back to Request Part until they ship.
+        <ul className="mt-3 divide-y divide-border border-y border-border">
+          {p.catalogParts.map((c) => (
+            <li key={c.id}>
+              <label className="flex items-center gap-3 py-2.5 text-[15px]">
+                <input type="checkbox" checked={partIds.includes(c.id)} disabled={dis} onChange={() => togglePart(c.id)} className="h-4 w-4 accent-[var(--pivot-accent)]" />
+                <span className="flex-1">{c.name}</span>
+                <span className="font-mono text-[13px] text-text-3">{c.sku}</span>
+              </label>
+            </li>
+          ))}
+          {other.map((name) => (
+            <li key={`other-${name}`}>
+              <label className="flex items-center gap-3 py-2.5 text-[15px]">
+                <input type="checkbox" checked disabled={dis} onChange={() => setOther((os) => os.filter((o) => o !== name))} className="h-4 w-4 accent-[var(--pivot-accent)]" />
+                <span className="flex-1">{name}</span>
+                <span className="text-[13px] text-text-3">not in catalog</span>
+              </label>
+            </li>
+          ))}
+          {sentParts.map((x) => (
+            <li key={x.id}>
+              <div className="flex items-center gap-3 py-2.5 text-[15px] text-text-3">
+                <input type="checkbox" checked disabled className="h-4 w-4 accent-[var(--pivot-accent)]" />
+                <span className="flex-1">{x.name}</span>
+                <span className="text-[13px] text-green">already sent</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-3 flex items-center gap-2">
+          <input
+            value={otherDraft}
+            disabled={dis}
+            onChange={(e) => setOtherDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addOther();
+              }
+            }}
+            placeholder="Something else…"
+            aria-label="Part not in the catalog"
+            className="h-9 w-64 rounded-lg border border-border-strong bg-transparent px-3 text-[14px] text-text placeholder:text-text-3 focus:border-accent focus:outline-none disabled:opacity-60"
+          />
+          <button type="button" disabled={dis || !otherDraft.trim()} onClick={addOther} className="h-9 rounded-lg border border-border-strong px-3 text-[13.5px] text-text-2 hover:border-accent-text hover:text-accent-text disabled:opacity-50">
+            Add
+          </button>
+        </div>
+        {selectedNames.length > 0 && (
+          <p className="mt-3 text-[13.5px] text-text-3">
+            {selectedNames.join(", ")} · for {p.watchModel}.{" "}
+            {unchanged && originalIds.length + originalOther.length > 0
+              ? "This request is already pending; Continue goes back to Request Part."
+              : "Use the button below to send the request."}
           </p>
         )}
       </div>
@@ -228,4 +275,10 @@ export function ReceivedForm(p: Props) {
 
     </div>
   );
+}
+
+function sameSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const s = new Set(a.map((x) => x.toLowerCase()));
+  return b.every((x) => s.has(x.toLowerCase()));
 }

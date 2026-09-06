@@ -7,7 +7,15 @@ import { formatDate } from "@/lib/format";
 import { pauseReminders, savePartSent, savePartsTracking } from "../actions";
 import { ghostBtn, primaryBtn } from "./confirm-advance-dialog";
 
-type Part = { id: string; name: string; sku: string | null; sent_at: string | null; tracking_number: string | null };
+type Part = {
+  id: string;
+  name: string;
+  sku: string | null;
+  sent_at: string | null;
+  tracking_number: string | null;
+  /** Owners see supply; others get undefined. Stock is not touched until "All sent". */
+  stock?: { qty: number; reorder_at: number };
+};
 
 type Props = {
   ticketId: string;
@@ -85,6 +93,12 @@ export function RequestPartForm(p: Props) {
                   {part.name}
                   {part.sku && <span className="ml-2 font-mono text-[13px] text-text-3">{part.sku}</span>}
                 </span>
+                {part.stock && (
+                  <span className={`text-[13px] ${part.stock.qty <= part.stock.reorder_at ? "text-amber" : "text-text-3"}`}>
+                    {part.stock.qty} in stock · reorder at {part.stock.reorder_at}
+                  </span>
+                )}
+                {!part.stock && !part.sku && <span className="text-[13px] text-text-3">not in catalog</span>}
                 {part.sent_at && <span className="text-[13px] text-green">Sent {formatDate(part.sent_at)}</span>}
               </label>
             </li>
@@ -136,7 +150,7 @@ export function RequestPartForm(p: Props) {
 
       {unsent > 0 && parts.length > 0 && (
         <p className="text-[13.5px] text-text-3">
-          {unsent} of {parts.length} still to send. Once every part is ticked, “All sent” hands the ticket back.
+          {unsent} of {parts.length} still to send. Once every part is ticked, “All sent” hands the ticket back and takes the parts out of stock.
         </p>
       )}
       {error && <p className="text-[13px] text-red">{error}</p>}

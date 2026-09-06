@@ -95,3 +95,31 @@ export async function getTicketDetail(id: string): Promise<TicketDetail | null> 
     events: (events ?? []).map((e): TicketEvent => ({ ...e, actor: e.actor ?? null })),
   };
 }
+
+export type CatalogPart = { id: string; name: string; sku: string; component: string };
+
+/** Parts that fit the ticket's watch, as the bench sees them (no cost, no stock). */
+export async function getPartsForWatch(watchId: string): Promise<CatalogPart[]> {
+  const supabase = await createClient();
+  const { data: fits } = await supabase.from("watch_parts").select("part_id").eq("watch_id", watchId);
+  const ids = (fits ?? []).map((f) => f.part_id);
+  if (ids.length === 0) return [];
+  const { data } = await supabase.from("parts_for_bench").select("id, sku, name, component").in("id", ids).eq("is_active", true).order("name");
+  return (data ?? []).flatMap((p) => (p.id && p.sku && p.name && p.component ? [{ id: p.id, sku: p.sku, name: p.name, component: p.component }] : []));
+}
+
+export type PartStock = { qty: number; reorder_at: number };
+
+/** Stock levels for owners. RLS hides the parts table from everyone else, so this returns {} for them. */
+export async function getPartsStock(partIds: string[]): Promise<Record<string, PartStock>> {
+  if (partIds.length === 0) return {};
+  const supabase = await createClient();
+  const [{ data: parts }, { data: stock }] = await Promise.all([
+    supabase.from("parts").select("id, reorder_at").in("id", partIds),
+    supabase.from("parts_stock").select("part_id, stock_qty").in("part_id", partIds),
+  ]);
+  const qty = new Map((stock ?? []).map((s) => [s.part_id, s.stock_qty ?? 0]));
+  const out: Record<string, PartStock> = {};
+  for (const p of parts ?? []) out[p.id] = { qty: qty.get(p.id) ?? 0, reorder_at: p.reorder_at };
+  return out;
+}

@@ -102,6 +102,9 @@ export function stageSummaryRows(stage: Stage, t: TicketDetail): SummaryRow[] {
         { label: "On the bench", value: t.watch_received_at ? formatDate(t.watch_received_at) : "—" },
         { label: "Condition on arrival", value: conds.length ? conds.map((c) => `${c.component} (${c.conditions.join(", ")})`).join("; ") : "—" },
         ...(t.intake_notes ? [{ label: "Intake notes", value: t.intake_notes }] : []),
+        ...(t.parts.some((p) => p.source === "brand")
+          ? [{ label: "Parts requested", value: t.parts.filter((p) => p.source === "brand").map((p) => p.name).join(", ") }]
+          : []),
       ];
     }
     case "request_part": {

@@ -4,12 +4,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/features/auth/queries";
 import { z } from "zod";
-import { COMPONENTS, INTAKE_COMPONENTS, INTAKE_CONDITIONS, advance, canActOn, componentLabel, reopen, requestParts, sendBack, type Refusal } from "@/features/pipeline";
+import { INTAKE_COMPONENTS, INTAKE_CONDITIONS, advance, canActOn, reopen, requestParts, sendBack, type Refusal } from "@/features/pipeline";
+import type { Database } from "@/lib/supabase/database.types";
 import { getWorkspaceContext } from "@/features/workspaces/queries";
 import { createClient } from "@/lib/supabase/server";
 import { CreateTicketError, createTicket } from "./create";
 import { toPipelineTicket } from "./detail";
-import { getTicketDetail } from "./queries";
+import { getPartsForWatch, getTicketDetail } from "./queries";
 import { applyTransition } from "./transition";
 import { createTicketSchema, intakeFormToInput } from "./schema";
 
@@ -200,40 +201,66 @@ export async function saveReceived(raw: z.input<typeof receivedInput>): Promise<
   return { ok: true };
 }
 
-const requestPartsInput = z.object({ ticketId: z.uuid(), components: z.array(z.enum(COMPONENTS)).min(1) });
+const requestPartsInput = z.object({
+  ticketId: z.uuid(),
+  /** Catalog parts that fit the watch. */
+  partIds: z.array(z.uuid()).max(50),
+  /** Free-text parts that aren't in the catalog. */
+  other: z.array(z.string().trim().min(1).max(120)).max(20),
+});
 
-/** "Send request to Wes": records the parts and moves the ticket to Request Part. */
+/**
+ * "Request parts": makes the pending request equal to the selection, then
+ * moves the ticket to Request Part. Rows already marked sent are kept.
+ */
 export async function requestPartsAction(raw: z.input<typeof requestPartsInput>): Promise<MoveResult> {
   const parsed = requestPartsInput.safeParse(raw);
   if (!parsed.success) return { ok: false, error: "Pick at least one part." };
-  const { ticketId, components } = parsed.data;
+  const { ticketId, partIds, other } = parsed.data;
+  if (partIds.length + other.length === 0) return { ok: false, error: "Pick at least one part." };
   const ctx = await loadForMove(ticketId);
   if (!ctx.ok) return { ok: false, error: ctx.error };
   if (ctx.detail.stage !== "received") return { ok: false, error: "Parts are requested from Received & Diagnostics." };
   if (!canActOn(ctx.user.profile.role, "received")) return { ok: false, error: "Only the watchmaker requests parts." };
 
   const supabase = await createClient();
+  const pending = ctx.detail.parts.filter((x) => x.source === "brand" && !x.sent_at);
+  const otherNames = new Set(other.map((n) => n.toLowerCase()));
+
+  // Drop unsent rows that are no longer selected.
+  const stale = pending.filter((x) => (x.part_id ? !partIds.includes(x.part_id) : !otherNames.has(x.name.toLowerCase())));
+  if (stale.length) await supabase.from("ticket_parts").delete().in("id", stale.map((x) => x.id));
+
+  // Add newly selected catalog parts, validated against the watch's fit list.
+  const havePart = new Set(pending.map((x) => x.part_id).filter(Boolean));
+  const newIds = partIds.filter((id) => !havePart.has(id));
   const now = new Date().toISOString();
-  const { error } = await supabase.from("ticket_parts").insert(
-    components.map((c) => ({
-      ticket_id: ticketId,
-      component: c,
-      name: componentLabel(c),
-      source: "brand",
-      requested_at: now,
-      requested_by: ctx.user.id,
-    })),
-  );
-  if (error) return { ok: false, error: error.message };
+  if (newIds.length) {
+    const catalog = await getPartsForWatch(ctx.detail.watch_id);
+    const rows = newIds.flatMap((id) => {
+      const c = catalog.find((x) => x.id === id);
+      return c ? [{ ticket_id: ticketId, part_id: c.id, component: c.component as Database["public"]["Enums"]["component"], name: c.name, sku: c.sku, source: "brand", requested_at: now, requested_by: ctx.user.id }] : [];
+    });
+    if (rows.length !== newIds.length) return { ok: false, error: "One of those parts doesn't fit this watch. Reload and try again." };
+    const { error } = await supabase.from("ticket_parts").insert(rows);
+    if (error) return { ok: false, error: error.message };
+  }
+  const haveName = new Set(pending.filter((x) => !x.part_id).map((x) => x.name.toLowerCase()));
+  const newOther = other.filter((n) => !haveName.has(n.toLowerCase()));
+  if (newOther.length) {
+    const { error } = await supabase.from("ticket_parts").insert(newOther.map((name) => ({ ticket_id: ticketId, name, source: "brand", requested_at: now, requested_by: ctx.user.id })));
+    if (error) return { ok: false, error: error.message };
+  }
+
+  const fresh = await getTicketDetail(ticketId);
+  if (!fresh) return { ok: false, error: "Ticket not found." };
+  const requested = fresh.parts.filter((x) => x.source === "brand" && !x.sent_at).map((x) => x.name);
   await supabase.from("ticket_events").insert({
     ticket_id: ticketId,
     type: "parts_requested",
     actor_id: ctx.user.id,
-    body: `requested parts from the brand · ${components.map(componentLabel).join(", ")}`,
+    body: `requested parts from the brand · ${requested.join(", ")}`,
   });
-
-  const fresh = await getTicketDetail(ticketId);
-  if (!fresh) return { ok: false, error: "Ticket not found." };
   const result = requestParts(toPipelineTicket(fresh), ctx.user.profile.role);
   if (!result.ok) return { ok: false, error: refusalMessage(result) };
   await applyTransition(supabase, ticketId, ctx.user.id, result, false);
