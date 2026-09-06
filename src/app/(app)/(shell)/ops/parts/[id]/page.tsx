@@ -63,7 +63,7 @@ export default async function PartPage({ params }: Params) {
         <Stat label="In stock" value={String(part.stock)} tone={low ? "amber" : undefined} note={low ? (part.stock === 0 ? "out of stock" : "at or below reorder point") : undefined} />
         <Stat label="Reorder at" value={String(part.reorder_at)} />
         <Stat label="Waiting" value={String(part.waiting_tickets)} note={part.waiting_qty > 0 ? `${part.waiting_qty} unit${part.waiting_qty === 1 ? "" : "s"} needed` : "no tickets"} tone={part.stock < part.waiting_qty ? "amber" : undefined} />
-        {showCost ? <Stat label="Unit cost" value={part.unit_cost != null ? money.format(part.unit_cost) : "—"} note={part.supplier ?? undefined} /> : <Stat label="On order" value={String(part.on_order_qty)} />}
+        {showCost ? <Stat label="Default unit cost" value={part.unit_cost != null ? money.format(part.unit_cost) : "—"} note={part.supplier ?? undefined} /> : <Stat label="On order" value={String(part.on_order_qty)} />}
       </dl>
 
       {canEdit && (

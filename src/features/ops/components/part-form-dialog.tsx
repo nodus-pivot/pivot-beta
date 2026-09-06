@@ -53,7 +53,7 @@ export function PartFormDialog({ workspaceId, part }: Props) {
             <Field id="reorder_at" label="Reorder at" hint="turns amber at or below" error={errors.reorder_at}>
               <input id="reorder_at" name="reorder_at" type="number" min={0} inputMode="numeric" defaultValue={part?.reorder_at ?? 0} className={`${fieldClass} font-mono`} />
             </Field>
-            <Field id="unit_cost" label="Unit cost" hint="USD · owners only" error={errors.unit_cost}>
+            <Field id="unit_cost" label="Default unit cost" hint="USD · owners only · each intake can override" error={errors.unit_cost}>
               <input id="unit_cost" name="unit_cost" type="number" min={0} step="0.01" inputMode="decimal" defaultValue={part?.unit_cost ?? ""} className={`${fieldClass} font-mono`} />
             </Field>
           </div>

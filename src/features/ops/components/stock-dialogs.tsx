@@ -32,7 +32,7 @@ export function IntakeDialog({ part, orders }: { part: PartRef; orders: OpenOrde
             <Field id="in_qty" label="Quantity" error={errors.qty}>
               <input id="in_qty" name="qty" type="number" min={1} inputMode="numeric" required autoFocus className={`${fieldClass} font-mono`} aria-invalid={!!errors.qty || undefined} />
             </Field>
-            <Field id="in_cost" label="Unit cost" hint="optional · defaults to the part's" error={errors.unit_cost}>
+            <Field id="in_cost" label="Unit cost for this delivery" hint="optional · defaults to the part's default" error={errors.unit_cost}>
               <input id="in_cost" name="unit_cost" type="number" min={0} step="0.01" inputMode="decimal" defaultValue={part.unit_cost ?? ""} className={`${fieldClass} font-mono`} />
             </Field>
           </div>

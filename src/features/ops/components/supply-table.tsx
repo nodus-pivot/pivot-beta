@@ -68,7 +68,7 @@ export function SupplyTable({ rows, showCost, watches }: Props) {
               <th className="bg-surface px-3 py-2.5 text-right font-medium">Reorder at</th>
               <th className="bg-surface px-3 py-2.5 text-right font-medium">Waiting</th>
               <th className="bg-surface px-3 py-2.5 text-right font-medium">On order</th>
-              {showCost && <th className="bg-surface px-3 py-2.5 text-right font-medium">Unit cost</th>}
+              {showCost && <th className="bg-surface px-3 py-2.5 text-right font-medium">Default cost</th>}
             </tr>
           </thead>
           <tbody>
