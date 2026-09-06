@@ -37,7 +37,7 @@ export default async function SupplyPage() {
             {!canEdit && " You can look but not change anything."}
           </p>
         </div>
-        {canEdit && <PartFormDialog workspaceId={current.id} watches={watches ?? []} />}
+        {canEdit && <PartFormDialog workspaceId={current.id} />}
       </div>
       <div className="mt-8">
         <SupplyTable rows={rows} showCost={canSeeCost(user.grants, current.id)} watches={watches ?? []} />

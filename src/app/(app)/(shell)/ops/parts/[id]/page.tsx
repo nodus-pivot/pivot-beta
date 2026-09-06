@@ -46,11 +46,14 @@ export default async function PartPage({ params }: Params) {
             {!part.is_active && <span className="rounded-full bg-surface-2 px-2 text-[11.5px]">retired</span>}
           </p>
           <h1 className="mt-1 text-[28px]">{part.name}</h1>
-          <p className="mt-1 text-[14.5px] text-text-2">Fits {part.fits.length ? part.fits.map((f) => f.model).join(", ") : "no watches yet"}</p>
+          <p className="mt-1 text-[14.5px] text-text-2">
+            Fits {part.fits.length ? part.fits.map((f) => f.model).join(", ") : "no watches yet"}
+            <span className="ml-2 text-[13px] text-text-3">· set on each watch under Watches</span>
+          </p>
         </div>
         {canEdit && (
           <div className="flex flex-none items-center gap-2">
-            <PartFormDialog workspaceId={part.workspace_id} watches={part.watches} part={part} />
+            <PartFormDialog workspaceId={part.workspace_id} part={part} />
             <RetireButton partId={part.id} active={part.is_active} />
           </div>
         )}

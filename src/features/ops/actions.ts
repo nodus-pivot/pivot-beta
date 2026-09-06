@@ -43,7 +43,6 @@ const partInput = z.object({
   reorder_at: count,
   unit_cost: money,
   supplier: z.string().trim().max(200).transform((v) => v || null),
-  fits: z.array(z.uuid()).max(200),
   /** Opening count, new parts only. */
   opening_qty: count.optional(),
 });
@@ -57,7 +56,6 @@ function partFromForm(fd: FormData) {
     reorder_at: fd.get("reorder_at") ?? "",
     unit_cost: fd.get("unit_cost") ?? "",
     supplier: fd.get("supplier") ?? "",
-    fits: fd.getAll("fits").map(String),
     opening_qty: fd.get("opening_qty") ?? "",
   };
 }
@@ -76,10 +74,6 @@ export async function createPart(_prev: OpsResult | null, fd: FormData): Promise
     .select("id")
     .single();
   if (error) return { ok: false, error: error.code === "23505" ? "That SKU already exists in this workspace." : error.message, fieldErrors: error.code === "23505" ? { sku: "Already in use." } : undefined };
-  if (input.fits.length) {
-    const { error: e2 } = await supabase.from("watch_parts").insert(input.fits.map((watch_id) => ({ watch_id, part_id: part.id })));
-    if (e2) return { ok: false, error: e2.message };
-  }
   if (input.opening_qty && input.opening_qty > 0) {
     const { error: e3 } = await supabase.from("stock_movements").insert({ part_id: part.id, qty_delta: input.opening_qty, reason: "initial_count", unit_cost_at_time: input.unit_cost, note: "opening count", created_by: user.id });
     if (e3) return { ok: false, error: e3.message };
@@ -101,14 +95,6 @@ export async function updatePart(_prev: OpsResult | null, fd: FormData): Promise
     .update({ sku: input.sku, name: input.name, component: input.component, reorder_at: input.reorder_at, unit_cost: input.unit_cost, supplier: input.supplier })
     .eq("id", partId.data);
   if (error) return { ok: false, error: error.code === "23505" ? "That SKU already exists in this workspace." : error.message };
-
-  const { data: current } = await ctx.supabase.from("watch_parts").select("watch_id").eq("part_id", partId.data);
-  const have = new Set((current ?? []).map((c) => c.watch_id));
-  const want = new Set(input.fits);
-  const add = [...want].filter((id) => !have.has(id));
-  const drop = [...have].filter((id) => !want.has(id));
-  if (add.length) await ctx.supabase.from("watch_parts").insert(add.map((watch_id) => ({ watch_id, part_id: partId.data })));
-  if (drop.length) await ctx.supabase.from("watch_parts").delete().eq("part_id", partId.data).in("watch_id", drop);
   revalidatePath("/ops", "layout");
   return { ok: true };
 }

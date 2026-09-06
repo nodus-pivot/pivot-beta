@@ -2,27 +2,23 @@
 
 import { COMPONENTS, COMPONENT_LABELS } from "@/features/pipeline";
 import { createPart, updatePart } from "../actions";
-import { ActionDialog, Field, fieldClass, hintClass, labelClass } from "./action-dialog";
-
-type Watch = { id: string; model: string };
+import { ActionDialog, Field, fieldClass } from "./action-dialog";
 
 type Props = {
   workspaceId: string;
-  watches: Watch[];
   /** Present when editing. */
-  part?: { id: string; sku: string; name: string; component: string; reorder_at: number; unit_cost: number | null; supplier: string | null; fits: { id: string }[] };
+  part?: { id: string; sku: string; name: string; component: string; reorder_at: number; unit_cost: number | null; supplier: string | null };
 };
 
 const select = `${fieldClass} appearance-none pr-9 bg-[url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='%238A9DB0' stroke-width='1.5'/%3E%3C/svg%3E")] bg-[length:12px] bg-[right_12px_center] bg-no-repeat`;
 
-/** New part / Edit part: identity, reorder point, cost, supplier, and which watches it fits. */
-export function PartFormDialog({ workspaceId, watches, part }: Props) {
+/** New part / Edit part: identity, reorder point, cost, supplier. Which watches use it is set on the watch. */
+export function PartFormDialog({ workspaceId, part }: Props) {
   const editing = !!part;
-  const fits = new Set(part?.fits.map((f) => f.id) ?? []);
   return (
     <ActionDialog
       title={editing ? "Edit part" : "New part"}
-      description={editing ? undefined : "A part in this workspace's inventory. Link it to the watches it fits so the bench can pick it."}
+      description={editing ? undefined : "A part in this workspace's inventory. Add it to the watches it fits from the Watches page."}
       trigger={editing ? "Edit" : "+ New part"}
       triggerStyle={editing ? "secondary" : "primary"}
       submitLabel={editing ? "Save" : "Add part"}
@@ -64,23 +60,6 @@ export function PartFormDialog({ workspaceId, watches, part }: Props) {
           <Field id="supplier" label="Supplier" hint="optional" error={errors.supplier}>
             <input id="supplier" name="supplier" defaultValue={part?.supplier ?? ""} className={fieldClass} />
           </Field>
-          <div>
-            <span className={labelClass}>
-              Fits<span className={hintClass}>which watches use this part</span>
-            </span>
-            {watches.length === 0 ? (
-              <p className="mt-2 text-[13.5px] text-text-3">No watches in this workspace yet. Add them under Watches.</p>
-            ) : (
-              <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5">
-                {watches.map((w) => (
-                  <label key={w.id} className="flex items-center gap-2 text-[14px]">
-                    <input type="checkbox" name="fits" value={w.id} defaultChecked={fits.has(w.id)} className="h-4 w-4 accent-[var(--pivot-accent)]" />
-                    {w.model}
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
         </>
       )}
     </ActionDialog>
