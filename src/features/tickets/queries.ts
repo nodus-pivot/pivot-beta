@@ -15,16 +15,38 @@ export type TicketListItem = {
   watch_model: string;
 };
 
+const SELECT = "id, ticket_number, customer_name, stage, priority, updated_at, created_at, parts_requested_at, watches(model)";
+
 export async function listOpenTickets(workspaceId: string): Promise<TicketListItem[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("tickets")
-    .select("id, ticket_number, customer_name, stage, priority, updated_at, created_at, parts_requested_at, watches(model)")
+    .select(SELECT)
     .eq("workspace_id", workspaceId)
     .neq("stage", "closed")
     .order("updated_at", { ascending: false });
   if (error) throw error;
-  return (data ?? []).map((t) => ({
+  return (data ?? []).map(toListItem);
+}
+
+/** The most recently closed tickets, for the sidebar's collapsed group. The dashboard will list all of them. */
+export async function listRecentlyClosed(workspaceId: string, limit = 25): Promise<TicketListItem[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("tickets")
+    .select(SELECT)
+    .eq("workspace_id", workspaceId)
+    .eq("stage", "closed")
+    .order("closed_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []).map(toListItem);
+}
+
+type ListRow = { id: string; ticket_number: string; customer_name: string | null; stage: string; priority: boolean; updated_at: string; created_at: string; parts_requested_at: string | null; watches: { model: string } | null };
+
+function toListItem(t: ListRow): TicketListItem {
+  return {
     id: t.id,
     ticket_number: t.ticket_number,
     customer_name: t.customer_name,
@@ -34,7 +56,7 @@ export async function listOpenTickets(workspaceId: string): Promise<TicketListIt
     created_at: t.created_at,
     parts_requested_at: t.parts_requested_at,
     watch_model: t.watches?.model ?? "",
-  }));
+  };
 }
 
 export type CatalogBrand = { id: string; name: string };

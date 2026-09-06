@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMemo, useState } from "react";
-import { CaretDoubleLeft, CaretDoubleRight, MagnifyingGlass, Plus } from "@phosphor-icons/react";
+import { CaretDoubleLeft, CaretDoubleRight, CaretRight, MagnifyingGlass, Plus } from "@phosphor-icons/react";
 import { LIVE_STAGES, STAGE_DEFINITIONS, type Role, type Stage } from "@/features/pipeline";
 import { relativeAge } from "@/lib/labels";
 import type { TicketListItem } from "../queries";
 
 type Props = {
   tickets: TicketListItem[];
+  /** Recently closed, newest first. Shown in a collapsed group at the bottom. */
+  closed: TicketListItem[];
   role: Role;
 };
 
@@ -18,22 +20,24 @@ type Props = {
  * pipeline order. Search filters in memory; the list is small. Collapses to
  * a rail showing only stage counts.
  */
-export function TicketSidebar({ tickets, role }: Props) {
+export function TicketSidebar({ tickets, closed, role }: Props) {
   const pathname = usePathname();
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState(false);
 
+  const q = query.trim().toLowerCase();
+  const matches = (t: TicketListItem) => !q || [t.ticket_number, t.customer_name ?? "", t.watch_model].some((s) => s.toLowerCase().includes(q));
   const groups = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const shown = q
-      ? tickets.filter((t) =>
-          [t.ticket_number, t.customer_name ?? "", t.watch_model].some((s) => s.toLowerCase().includes(q)),
-        )
-      : tickets;
+    const shown = tickets.filter(matches);
     return LIVE_STAGES.filter((s) => s !== "closed")
       .map((stage) => ({ stage, items: shown.filter((t) => t.stage === stage) }))
       .filter((g) => g.items.length > 0);
-  }, [tickets, query]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tickets, q]);
+  const closedShown = closed.filter(matches);
+  // Searching opens the closed group so a hit there is visible.
+  const [closedOpen, setClosedOpen] = useState(false);
+  const showClosed = closedOpen || (!!q && closedShown.length > 0);
 
   const heading = role === "watchmaker" ? "My watches" : "All tickets";
   const canCreate = role !== "watchmaker";
@@ -99,35 +103,65 @@ export function TicketSidebar({ tickets, role }: Props) {
               <span className="ml-auto rounded-full bg-surface-2 px-1.5 text-[11px] text-text-2">{g.items.length}</span>
             </h3>
             <ul>
-              {g.items.map((t) => {
-                const href = `/service-center/tickets/${t.id}`;
-                const active = pathname === href;
-                const amber = t.stage === "request_part";
-                return (
-                  <li key={t.id}>
-                    <Link
-                      href={href}
-                      aria-current={active ? "page" : undefined}
-                      className={`block border-l-2 px-4 py-2 transition-colors hover:bg-[color-mix(in_srgb,var(--pivot-text)_6%,transparent)] ${
-                        active ? "border-accent bg-accent-900/40" : "border-transparent"
-                      } ${amber ? "bg-amber-bg/60" : ""}`}
-                    >
-                      <span className="flex items-center gap-2 text-[14px] font-medium">
-                        {t.priority && <span className="h-1.5 w-1.5 rounded-full bg-red" title="Priority" />}
-                        <span className="truncate">{t.customer_name ?? t.ticket_number}</span>
-                      </span>
-                      <span className={`block truncate text-[12.5px] ${amber ? "text-amber" : "text-text-3"}`}>
-                        {t.watch_model} · {amber && t.parts_requested_at ? `waiting ${relativeAge(t.parts_requested_at)}` : relativeAge(t.updated_at)}
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
+              {g.items.map((t) => (
+                <li key={t.id}>
+                  <Row t={t} pathname={pathname} />
+                </li>
+              ))}
             </ul>
           </section>
         ))}
+
+        {closed.length > 0 && (
+          <section className="mt-4 border-t border-border pt-2">
+            <button
+              type="button"
+              onClick={() => setClosedOpen((v) => !v)}
+              aria-expanded={showClosed}
+              className="flex w-full items-center gap-2 px-4 pb-1 pt-2 text-[11.5px] font-medium uppercase tracking-[0.06em] text-text-3 hover:text-text"
+            >
+              <CaretRight size={12} className={`transition-transform ${showClosed ? "rotate-90" : ""}`} />
+              Closed
+              <span className="ml-auto rounded-full bg-surface-2 px-1.5 text-[11px] normal-case tracking-normal text-text-2">{closedShown.length}</span>
+            </button>
+            {showClosed && (
+              <ul>
+                {closedShown.map((t) => (
+                  <li key={t.id}>
+                    <Row t={t} pathname={pathname} />
+                  </li>
+                ))}
+                {closedShown.length === 0 && <li className="px-4 py-2 text-[13px] text-text-3">No closed tickets match.</li>}
+              </ul>
+            )}
+          </section>
+        )}
       </nav>
     </aside>
+  );
+}
+
+function Row({ t, pathname }: { t: TicketListItem; pathname: string }) {
+  const href = `/service-center/tickets/${t.id}`;
+  const active = pathname === href;
+  const amber = t.stage === "request_part";
+  const closed = t.stage === "closed";
+  return (
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={`block border-l-2 px-4 py-2 transition-colors hover:bg-[color-mix(in_srgb,var(--pivot-text)_6%,transparent)] ${
+        active ? "border-accent bg-accent-900/40" : "border-transparent"
+      } ${amber ? "bg-amber-bg/60" : ""} ${closed ? "opacity-70" : ""}`}
+    >
+      <span className="flex items-center gap-2 text-[14px] font-medium">
+        {t.priority && <span className="h-1.5 w-1.5 rounded-full bg-red" title="Priority" />}
+        <span className="truncate">{t.customer_name ?? t.ticket_number}</span>
+      </span>
+      <span className={`block truncate text-[12.5px] ${amber ? "text-amber" : "text-text-3"}`}>
+        {t.watch_model} · {amber && t.parts_requested_at ? `waiting ${relativeAge(t.parts_requested_at)}` : closed ? `closed ${relativeAge(t.updated_at)}` : relativeAge(t.updated_at)}
+      </span>
+    </Link>
   );
 }
 
