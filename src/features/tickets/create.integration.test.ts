@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { afterAll, describe, expect, it } from "vitest";
 import type { Database } from "@/lib/supabase/database.types";
-import { advance, sendBack } from "@/features/pipeline";
+import { advance, sendBack, type Grant } from "@/features/pipeline";
 import { createTicket } from "./create";
 import { toPipelineTicket } from "./detail";
 import { applyTransition } from "./transition";
@@ -17,6 +17,8 @@ const NODUS = "a0000000-0000-4000-8000-000000000001";
 const NODUS_BRAND = "a0000000-0000-4000-8000-000000000011";
 const SECTOR_DEEP = "a0000000-0000-4000-8000-000000000101";
 const AWAKE_BRAND = "a0000000-0000-4000-8000-000000000022";
+const OWNER: Grant[] = [{ role: "owner", workspace_id: null, brand_id: null }];
+const SCOPE = { workspaceId: NODUS, brandId: NODUS_BRAND };
 
 function env(name: string): string {
   const fromProcess = process.env[name];
@@ -104,12 +106,12 @@ describe.skipIf(!enabled)("createTicket (integration)", () => {
       return { ...row, watch: watches, brand: brands, parts: ticket_parts, shipments, events: (events ?? []).map((e) => ({ ...e, actor: null })), stock: {}, orders: {} };
     };
 
-    const back = sendBack(toPipelineTicket(await load()), "workspace_admin", settings);
+    const back = sendBack(toPipelineTicket(await load()), OWNER, SCOPE, settings);
     expect(back).toMatchObject({ ok: true, to: "intake" });
     if (back.ok) await applyTransition(db, t.id, userId, back, false);
     expect((await load()).stage).toBe("intake");
 
-    const fwd = advance(toPipelineTicket(await load()), "workspace_admin", settings);
+    const fwd = advance(toPipelineTicket(await load()), OWNER, SCOPE, settings);
     expect(fwd).toMatchObject({ ok: true, to: "received" });
     if (fwd.ok) await applyTransition(db, t.id, userId, fwd, true);
     const after = await load();
@@ -135,7 +137,7 @@ describe.skipIf(!enabled)("createTicket (integration)", () => {
     const { data: parts } = await db.from("ticket_parts").select("*").eq("ticket_id", t.id);
     const { data: row } = await db.from("tickets").select("*").eq("id", t.id).single();
     const pt = toPipelineTicket({ ...row!, watch: { model: "", reference: null, warranty_months: null }, brand: { name: "" }, parts: parts ?? [], shipments: [], events: [], stock: {}, orders: {} });
-    const r = advance(pt, "workspace_admin", { sendReturnLabelEnabled: false });
+    const r = advance(pt, OWNER, SCOPE, { sendReturnLabelEnabled: false });
     expect(r).toMatchObject({ ok: true, to: "request_part" });
     if (r.ok) await applyTransition(db, t.id, userId, r, false);
     const { data: after } = await db.from("tickets").select("stage, parts_requested_at").eq("id", t.id).single();

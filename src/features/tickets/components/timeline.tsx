@@ -1,7 +1,5 @@
 import { STAGE_DEFINITIONS, isLiveStage } from "@/features/pipeline";
 import { formatDateTime } from "@/lib/format";
-import { roleLabel } from "@/lib/labels";
-import type { Role } from "@/features/pipeline";
 import type { TicketEvent } from "../detail";
 import { CommentComposer } from "./comment-composer";
 
@@ -48,7 +46,6 @@ export function Timeline({ ticketId, events }: { ticketId: string; events: Ticke
               <div className="min-w-0">
                 <p className="text-[13.5px]">
                   <span className="font-medium">{e.actor?.display_name ?? "Team"}</span>
-                  {e.actor && <span className="text-text-3"> · {roleLabel(e.actor.role as Role)}</span>}
                   <span className="ml-2 text-[13px] text-text-3">{formatDateTime(e.created_at)}</span>
                 </p>
                 <p className="mt-0.5 whitespace-pre-wrap text-[14.5px] text-text-2">{e.body}</p>

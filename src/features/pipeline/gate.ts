@@ -1,8 +1,10 @@
-import type { PipelineTicket, Role, Stage } from "./types";
+import type { PipelineTicket, Stage } from "./types";
 
 export type GateOptions = {
-  /** Workspace admins may advance from Return home without payment. */
+  /** Owners and workspace admins may advance from Return home without payment. */
   overridePayment?: boolean;
+  /** Whether the caller administers the ticket's workspace (the override only counts then). */
+  isAdmin?: boolean;
 };
 
 /** Components whose Replace action needs a variant, and how to ask for it. */
@@ -16,7 +18,7 @@ const VARIANT_REQUIRED: Record<string, string> = {
  * Empty means it may advance. Each string is short enough to render as
  * "N left: a, b" under the disabled button.
  */
-export function missingFor(ticket: PipelineTicket, role: Role, opts: GateOptions = {}): string[] {
+export function missingFor(ticket: PipelineTicket, opts: GateOptions = {}): string[] {
   const stage = ticket.stage as Stage;
   const missing: string[] = [];
 
@@ -71,7 +73,7 @@ export function missingFor(ticket: PipelineTicket, role: Role, opts: GateOptions
 
     case "shipped_back": {
       const unpaid = ticket.requires_payment && ticket.payment_status !== "paid";
-      const override = opts.overridePayment && role === "workspace_admin";
+      const override = opts.overridePayment && opts.isAdmin;
       if (unpaid && !override) missing.push("payment received");
       if (!ticket.has_outbound_tracking && !ticket.in_person_handoff) {
         missing.push("tracking number or in-person handoff");

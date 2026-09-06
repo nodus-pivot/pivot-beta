@@ -1,4 +1,4 @@
-import type { Role, Stage } from "./types";
+import type { Grant, Scope, Stage, StageOwner } from "./types";
 
 export type StageDefinition = {
   id: Stage;
@@ -6,8 +6,8 @@ export type StageDefinition = {
   name: string;
   /** Wording shown to the customer on the status page. */
   publicName: string;
-  /** Roles that own the stage. Workspace admins own everything and are implied. */
-  owners: readonly Role[];
+  /** Roles that own the stage. Owners and workspace admins own everything and are implied. */
+  owners: readonly StageOwner[];
   /** Label on the primary action button that leaves this stage. */
   actionLabel: string | null;
 };
@@ -76,10 +76,30 @@ export function stageDef(stage: Stage): StageDefinition {
   return STAGE_DEFINITIONS[stage];
 }
 
-/** Mirrors app.can_act_on() in the database. Keep the two in sync. */
-export function canActOn(role: Role, stage: Stage): boolean {
-  if (role === "workspace_admin") return true;
-  return STAGE_DEFINITIONS[stage].owners.includes(role);
+export function isOwner(grants: Grant[]): boolean {
+  return grants.some((g) => g.role === "owner");
+}
+
+/** Owners administer every workspace; admins the ones they hold. */
+export function isAdminOf(grants: Grant[], workspaceId: string): boolean {
+  return isOwner(grants) || grants.some((g) => g.role === "admin" && g.workspace_id === workspaceId);
+}
+
+/** Does the caller hold a brand-level role on this brand? */
+export function holdsBrandRole(grants: Grant[], role: StageOwner, brandId: string | null): boolean {
+  return !!brandId && grants.some((g) => g.role === role && g.brand_id === brandId);
+}
+
+/** Mirrors app.can_act_on(stage, workspace, brand) in the database. Keep the two in sync. */
+export function canActOn(grants: Grant[], stage: Stage, scope: Scope): boolean {
+  if (isAdminOf(grants, scope.workspaceId)) return true;
+  return STAGE_DEFINITIONS[stage].owners.some((r) => holdsBrandRole(grants, r, scope.brandId));
+}
+
+/** Whether the caller can do anything at all in this workspace (any grant that touches it). */
+export function touchesWorkspace(grants: Grant[], workspaceId: string, brandWorkspace: (brandId: string) => string | undefined): boolean {
+  if (isAdminOf(grants, workspaceId)) return true;
+  return grants.some((g) => g.brand_id && brandWorkspace(g.brand_id) === workspaceId);
 }
 
 /** Public stage name for the customer status page. Legacy stages read as received. */

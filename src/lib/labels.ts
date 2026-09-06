@@ -1,13 +1,18 @@
-import type { Role } from "@/features/pipeline";
+import type { Grant, MemberRole } from "@/features/pipeline";
 
-export const ROLE_LABELS: Record<Role, string> = {
-  workspace_admin: "Owner",
-  watchmaker: "Watchmaker",
+export const ROLE_LABELS: Record<MemberRole, string> = {
+  owner: "Owner",
+  admin: "Admin",
   brand_rep: "Brand rep",
+  watchmaker: "Watchmaker",
 };
 
-export function roleLabel(role: Role): string {
-  return ROLE_LABELS[role];
+const ROLE_RANK: MemberRole[] = ["owner", "admin", "brand_rep", "watchmaker"];
+
+/** The person's highest role, for the top-bar chip. Round 2 adds the scope names. */
+export function grantsLabel(grants: Grant[]): string {
+  const top = ROLE_RANK.find((r) => grants.some((g) => g.role === r));
+  return top ? ROLE_LABELS[top] : "No access";
 }
 
 /** "today", "1d", "12d" — the sidebar's compact age. */

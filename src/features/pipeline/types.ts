@@ -27,7 +27,13 @@ export const LEGACY_STAGES = [
 ] as const;
 export type LegacyStage = (typeof LEGACY_STAGES)[number];
 
-export type Role = "workspace_admin" | "watchmaker" | "brand_rep";
+/** A scoped grant, one row of `memberships`. Owner is global, admin is per workspace, the other two per brand. */
+export type MemberRole = "owner" | "admin" | "brand_rep" | "watchmaker";
+export type Grant = { role: MemberRole; workspace_id: string | null; brand_id: string | null };
+/** The workspace and brand a ticket (or catalog row) belongs to. */
+export type Scope = { workspaceId: string; brandId: string | null };
+/** The roles that own pipeline stages. */
+export type StageOwner = "brand_rep" | "watchmaker";
 
 export type RepairAction = "repair" | "replace" | "regulate";
 

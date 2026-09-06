@@ -23,7 +23,7 @@ export type TicketEvent = {
   to_stage: string | null;
   payload: unknown;
   created_at: string;
-  actor: { display_name: string; role: string } | null;
+  actor: { display_name: string } | null;
 };
 
 /** Everything the ticket page needs, loaded once. */

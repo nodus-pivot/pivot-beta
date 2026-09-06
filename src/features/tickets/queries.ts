@@ -103,7 +103,7 @@ export async function getTicketDetail(id: string): Promise<TicketDetail | null> 
   // Actor names come from profiles; RLS may hide other people's rows, so the join is optional.
   const { data: events } = await supabase
     .from("ticket_events")
-    .select("id, type, body, from_stage, to_stage, payload, created_at, actor:profiles(display_name, role)")
+    .select("id, type, body, from_stage, to_stage, payload, created_at, actor:profiles(display_name)")
     .eq("ticket_id", id)
     .order("created_at");
 

@@ -1,8 +1,8 @@
 import { emailOnEnter, type EmailTemplate } from "./emails";
 import { missingFor, type GateOptions } from "./gate";
 import { isLiveStage, nextStage, previousStage } from "./path";
-import { canActOn } from "./stages";
-import type { PipelineTicket, Role, Stage, WorkspacePipelineSettings } from "./types";
+import { canActOn, isAdminOf } from "./stages";
+import type { Grant, PipelineTicket, Scope, Stage, WorkspacePipelineSettings } from "./types";
 
 /** Matches the p_kind values accepted by set_stage() in the database. */
 export type TransitionKind = "stage_changed" | "sent_back" | "reopened";
@@ -32,34 +32,35 @@ function refuse(reason: Refusal["reason"], missing: string[] = []): Refusal {
 /** Move the ticket forward one stage. */
 export function advance(
   ticket: PipelineTicket,
-  role: Role,
+  grants: Grant[],
+  scope: Scope,
   ws: WorkspacePipelineSettings,
-  opts: GateOptions = {},
+  opts: Omit<GateOptions, "isAdmin"> = {},
 ): TransitionResult {
   if (!isLiveStage(ticket.stage)) return refuse("legacy_stage");
   const from = ticket.stage;
-  if (!canActOn(role, from)) return refuse("not_owner");
+  if (!canActOn(grants, from, scope)) return refuse("not_owner");
   const to = nextStage(ticket, ws);
   if (!to) return refuse("no_next");
-  const missing = missingFor(ticket, role, opts);
+  const missing = missingFor(ticket, { ...opts, isAdmin: isAdminOf(grants, scope.workspaceId) });
   if (missing.length > 0) return refuse("blocked", missing);
   return { ok: true, kind: "stage_changed", from, to, email: emailOnEnter(to) };
 }
 
 /** Move the ticket back one stage. Never emails. */
-export function sendBack(ticket: PipelineTicket, role: Role, ws: WorkspacePipelineSettings): TransitionResult {
+export function sendBack(ticket: PipelineTicket, grants: Grant[], scope: Scope, ws: WorkspacePipelineSettings): TransitionResult {
   if (!isLiveStage(ticket.stage)) return refuse("legacy_stage");
   const from = ticket.stage;
   if (from === "closed") return refuse("no_previous");
-  if (!canActOn(role, from)) return refuse("not_owner");
+  if (!canActOn(grants, from, scope)) return refuse("not_owner");
   const to = previousStage(ticket, ws);
   if (!to) return refuse("no_previous");
   return { ok: true, kind: "sent_back", from, to, email: null };
 }
 
-/** Reopen a closed ticket onto Return home. Admins only. */
-export function reopen(ticket: PipelineTicket, role: Role): TransitionResult {
+/** Reopen a closed ticket onto Return home. Owners and workspace admins only. */
+export function reopen(ticket: PipelineTicket, grants: Grant[], scope: Scope): TransitionResult {
   if (ticket.stage !== "closed") return refuse("not_closed");
-  if (role !== "workspace_admin") return refuse("not_owner");
+  if (!isAdminOf(grants, scope.workspaceId)) return refuse("not_owner");
   return { ok: true, kind: "reopened", from: "closed", to: "shipped_back", email: null };
 }

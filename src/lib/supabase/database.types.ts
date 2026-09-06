@@ -115,6 +115,65 @@ export type Database = {
           },
         ]
       }
+      memberships: {
+        Row: {
+          brand_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          role: Database["public"]["Enums"]["member_role"]
+          user_id: string
+          workspace_id: string | null
+        }
+        Insert: {
+          brand_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          role: Database["public"]["Enums"]["member_role"]
+          user_id: string
+          workspace_id?: string | null
+        }
+        Update: {
+          brand_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["member_role"]
+          user_id?: string
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "memberships_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "memberships_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "memberships_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "memberships_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       part_orders: {
         Row: {
           created_at: string
@@ -181,6 +240,13 @@ export type Database = {
             referencedRelation: "stock_movements"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "part_orders_stock_movement_id_fkey"
+            columns: ["stock_movement_id"]
+            isOneToOne: false
+            referencedRelation: "stock_movements_for_bench"
+            referencedColumns: ["id"]
+          },
         ]
       }
       parts: {
@@ -240,7 +306,6 @@ export type Database = {
           email: string
           id: string
           is_active: boolean
-          role: Database["public"]["Enums"]["user_role"]
           updated_at: string
         }
         Insert: {
@@ -249,7 +314,6 @@ export type Database = {
           email: string
           id: string
           is_active?: boolean
-          role: Database["public"]["Enums"]["user_role"]
           updated_at?: string
         }
         Update: {
@@ -258,7 +322,6 @@ export type Database = {
           email?: string
           id?: string
           is_active?: boolean
-          role?: Database["public"]["Enums"]["user_role"]
           updated_at?: string
         }
         Relationships: []
@@ -606,6 +669,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "ticket_parts_stock_movement_id_fkey"
+            columns: ["stock_movement_id"]
+            isOneToOne: false
+            referencedRelation: "stock_movements_for_bench"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "ticket_parts_ticket_id_fkey"
             columns: ["ticket_id"]
             isOneToOne: false
@@ -784,72 +854,6 @@ export type Database = {
           },
         ]
       }
-      user_brands: {
-        Row: {
-          brand_id: string
-          created_at: string
-          user_id: string
-        }
-        Insert: {
-          brand_id: string
-          created_at?: string
-          user_id: string
-        }
-        Update: {
-          brand_id?: string
-          created_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "user_brands_brand_id_fkey"
-            columns: ["brand_id"]
-            isOneToOne: false
-            referencedRelation: "brands"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "user_brands_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      user_workspaces: {
-        Row: {
-          created_at: string
-          user_id: string
-          workspace_id: string
-        }
-        Insert: {
-          created_at?: string
-          user_id: string
-          workspace_id: string
-        }
-        Update: {
-          created_at?: string
-          user_id?: string
-          workspace_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "user_workspaces_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "user_workspaces_workspace_id_fkey"
-            columns: ["workspace_id"]
-            isOneToOne: false
-            referencedRelation: "workspaces"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       watch_brands: {
         Row: {
           brand_id: string
@@ -1020,6 +1024,7 @@ export type Database = {
           id: string | null
           is_active: boolean | null
           name: string | null
+          reorder_at: number | null
           sku: string | null
           workspace_id: string | null
         }
@@ -1028,6 +1033,7 @@ export type Database = {
           id?: string | null
           is_active?: boolean | null
           name?: string | null
+          reorder_at?: number | null
           sku?: string | null
           workspace_id?: string | null
         }
@@ -1036,6 +1042,7 @@ export type Database = {
           id?: string | null
           is_active?: boolean | null
           name?: string | null
+          reorder_at?: number | null
           sku?: string | null
           workspace_id?: string | null
         }
@@ -1071,9 +1078,85 @@ export type Database = {
           },
         ]
       }
+      stock_movements_for_bench: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string | null
+          note: string | null
+          part_id: string | null
+          qty_delta: number | null
+          reason: string | null
+          ticket_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string | null
+          note?: string | null
+          part_id?: string | null
+          qty_delta?: number | null
+          reason?: string | null
+          ticket_id?: never
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string | null
+          note?: string | null
+          part_id?: string | null
+          qty_delta?: number | null
+          reason?: string | null
+          ticket_id?: never
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_movements_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts_for_bench"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
+      admin_update_profile: {
+        Args: { p_display_name: string; p_is_active: boolean; p_user: string }
+        Returns: undefined
+      }
       consume_ticket_part: { Args: { p_row: string }; Returns: undefined }
+      part_demand: {
+        Args: { p_workspace: string }
+        Returns: {
+          part_id: string
+          ticket_count: number
+          waiting_qty: number
+        }[]
+      }
+      receive_part_order: {
+        Args: {
+          p_note?: string
+          p_order: string
+          p_qty: number
+          p_unit_cost?: number
+        }
+        Returns: undefined
+      }
       release_ticket_part: { Args: { p_row: string }; Returns: undefined }
       set_stage: {
         Args: {
@@ -1098,6 +1181,7 @@ export type Database = {
         | "hands"
         | "lume"
         | "movement"
+      member_role: "owner" | "admin" | "brand_rep" | "watchmaker"
       stage:
         | "intake"
         | "send_return_label"
@@ -1112,7 +1196,6 @@ export type Database = {
         | "awaiting_arrival"
         | "confirming_address"
         | "shipped"
-      user_role: "workspace_admin" | "watchmaker" | "brand_rep"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1254,6 +1337,7 @@ export const Constants = {
         "lume",
         "movement",
       ],
+      member_role: ["owner", "admin", "brand_rep", "watchmaker"],
       stage: [
         "intake",
         "send_return_label",
@@ -1269,7 +1353,6 @@ export const Constants = {
         "confirming_address",
         "shipped",
       ],
-      user_role: ["workspace_admin", "watchmaker", "brand_rep"],
     },
   },
 } as const

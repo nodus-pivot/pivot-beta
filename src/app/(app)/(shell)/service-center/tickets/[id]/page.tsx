@@ -26,8 +26,8 @@ export default async function TicketPage({ params }: Params) {
   const settings = { sendReturnLabelEnabled: ws?.send_return_label_enabled ?? false };
 
   return (
-    <TicketFrame t={t} role={user.profile.role} settings={settings}>
-      <CurrentStep t={t} role={user.profile.role} />
+    <TicketFrame t={t} grants={user.grants} settings={settings}>
+      <CurrentStep t={t} grants={user.grants} />
     </TicketFrame>
   );
 }

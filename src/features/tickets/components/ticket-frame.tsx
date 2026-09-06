@@ -6,11 +6,12 @@ import {
   missingFor,
   nextStage,
   previousStage,
+  isAdminOf,
   stagesFor,
-  type Role,
+  type Grant,
   type Stage,
 } from "@/features/pipeline";
-import { roleLabel } from "@/lib/labels";
+import { ROLE_LABELS } from "@/lib/labels";
 import { stageSummaryRows, toPipelineTicket, type TicketDetail } from "../detail";
 import { ActionBlock } from "./action-block";
 import { EarlierSteps } from "./earlier-steps";
@@ -21,7 +22,7 @@ import { Timeline } from "./timeline";
 
 type Props = {
   t: TicketDetail;
-  role: Role;
+  grants: Grant[];
   settings: { sendReturnLabelEnabled: boolean };
   /** The current stage's form. */
   children: React.ReactNode;
@@ -32,7 +33,7 @@ type Props = {
  * collapsed earlier steps, the current step (children), action block,
  * timeline. Every stage page renders inside this.
  */
-export function TicketFrame({ t, role, settings, children }: Props) {
+export function TicketFrame({ t, grants, settings, children }: Props) {
   if (!isLiveStage(t.stage)) return <LegacyStage t={t} />;
   const stage: Stage = t.stage;
   const pt = toPipelineTicket(t);
@@ -43,8 +44,10 @@ export function TicketFrame({ t, role, settings, children }: Props) {
   const prev = previousStage(pt, settings);
   const def = STAGE_DEFINITIONS[stage];
   const email = next ? emailOnEnter(next) : null;
-  const ownerLabel = def.owners.map(roleLabel).join(" / ") || "Owner";
+  const ownerLabel = def.owners.map((r) => ROLE_LABELS[r]).join(" / ") || "Owner";
   const actionLabel = def.actionLabel;
+  const scope = { workspaceId: t.workspace_id, brandId: t.brand_id };
+  const admin = isAdminOf(grants, t.workspace_id);
 
   return (
     <article className="mx-auto max-w-[860px] px-16 py-11">
@@ -69,14 +72,14 @@ export function TicketFrame({ t, role, settings, children }: Props) {
           nextName={next ? STAGE_DEFINITIONS[next].name : null}
           previousName={prev ? STAGE_DEFINITIONS[prev].name : null}
           actionLabel={actionLabel}
-          missing={missingFor(pt, role)}
-          canAct={canActOn(role, stage)}
+          missing={missingFor(pt, { isAdmin: admin })}
+          canAct={canActOn(grants, stage, scope)}
           ownerLabel={ownerLabel}
           isClosed={stage === "closed"}
-          canReopen={role === "workspace_admin"}
+          canReopen={admin}
           email={email ? { name: email.name, to: t.customer_email } : null}
           summary={stageSummaryRows(stage, t)}
-          canOverridePayment={role === "workspace_admin"}
+          canOverridePayment={admin}
         />
       </div>
 

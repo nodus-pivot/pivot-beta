@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/features/auth/queries";
 import { z } from "zod";
-import { COMPONENTS, INTAKE_CONDITIONS, advance, canActOn, reopen, sendBack, type Refusal } from "@/features/pipeline";
+import { COMPONENTS, INTAKE_CONDITIONS, advance, canActOn, reopen, sendBack, type Refusal, type Scope } from "@/features/pipeline";
+import { canCreateTicket } from "@/features/auth/permissions";
 import type { Database } from "@/lib/supabase/database.types";
 import { getWorkspaceContext } from "@/features/workspaces/queries";
 import { createClient } from "@/lib/supabase/server";
@@ -33,8 +34,6 @@ export async function createTicketAction(_prev: IntakeState, fd: FormData): Prom
   const values = rawValues(fd);
   const user = await getCurrentUser();
   if (!user) return { error: "You're signed out. Sign in and try again.", values };
-  if (!canActOn(user.profile.role, "intake")) return { error: "Only owners and brand reps create tickets.", values };
-
   const parsed = createTicketSchema.safeParse(intakeFormToInput(fd));
   if (!parsed.success) {
     const fieldErrors: Record<string, string> = {};
@@ -47,6 +46,7 @@ export async function createTicketAction(_prev: IntakeState, fd: FormData): Prom
 
   const { current } = await getWorkspaceContext();
   if (!current) return { error: "No workspace selected.", values };
+  if (!canCreateTicket(user.grants, current.id, parsed.data.brand_id)) return { error: "Only owners, admins and that brand's rep create tickets.", values };
 
   let created: { id: string };
   try {
@@ -97,6 +97,10 @@ async function loadForMove(ticketId: string): Promise<MoveContext> {
   return { ok: true, user, detail, settings: { sendReturnLabelEnabled: ws?.send_return_label_enabled ?? false } };
 }
 
+function scopeOf(t: { workspace_id: string; brand_id: string }): Scope {
+  return { workspaceId: t.workspace_id, brandId: t.brand_id };
+}
+
 const moveInput = z.object({
   ticketId: z.uuid(),
   sendEmail: z.boolean().default(true),
@@ -107,7 +111,7 @@ export async function advanceTicket(raw: z.input<typeof moveInput>): Promise<Mov
   const input = moveInput.parse(raw);
   const ctx = await loadForMove(input.ticketId);
   if (!ctx.ok) return { ok: false, error: ctx.error };
-  const result = advance(toPipelineTicket(ctx.detail), ctx.user.profile.role, ctx.settings, { overridePayment: input.overridePayment });
+  const result = advance(toPipelineTicket(ctx.detail), ctx.user.grants, scopeOf(ctx.detail), ctx.settings, { overridePayment: input.overridePayment });
   if (!result.ok) return { ok: false, error: refusalMessage(result), missing: result.missing };
   const supabase = await createClient();
   await applyTransition(supabase, input.ticketId, ctx.user.id, result, input.sendEmail);
@@ -119,7 +123,7 @@ export async function sendTicketBack(raw: { ticketId: string }): Promise<MoveRes
   const ticketId = z.uuid().parse(raw.ticketId);
   const ctx = await loadForMove(ticketId);
   if (!ctx.ok) return { ok: false, error: ctx.error };
-  const result = sendBack(toPipelineTicket(ctx.detail), ctx.user.profile.role, ctx.settings);
+  const result = sendBack(toPipelineTicket(ctx.detail), ctx.user.grants, scopeOf(ctx.detail), ctx.settings);
   if (!result.ok) return { ok: false, error: refusalMessage(result) };
   const supabase = await createClient();
   await applyTransition(supabase, ticketId, ctx.user.id, result, false);
@@ -131,7 +135,7 @@ export async function reopenTicket(raw: { ticketId: string }): Promise<MoveResul
   const ticketId = z.uuid().parse(raw.ticketId);
   const ctx = await loadForMove(ticketId);
   if (!ctx.ok) return { ok: false, error: ctx.error };
-  const result = reopen(toPipelineTicket(ctx.detail), ctx.user.profile.role);
+  const result = reopen(toPipelineTicket(ctx.detail), ctx.user.grants, scopeOf(ctx.detail));
   if (!result.ok) return { ok: false, error: refusalMessage(result) };
   const supabase = await createClient();
   await applyTransition(supabase, ticketId, ctx.user.id, result, false);
@@ -189,11 +193,11 @@ export async function saveReceived(raw: z.input<typeof receivedInput>): Promise<
   const input = parsed.data;
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "You're signed out." };
-  if (!canActOn(user.profile.role, "received")) return { ok: false, error: "Only the watchmaker edits this step." };
 
   const supabase = await createClient();
-  const { data: t } = await supabase.from("tickets").select("stage, watch_id, watch_received_at, repair_categories").eq("id", input.ticketId).maybeSingle();
+  const { data: t } = await supabase.from("tickets").select("stage, workspace_id, brand_id, watch_id, watch_received_at, repair_categories").eq("id", input.ticketId).maybeSingle();
   if (!t) return { ok: false, error: "Ticket not found." };
+  if (!canActOn(user.grants, "received", scopeOf(t))) return { ok: false, error: "Only the watchmaker edits this step." };
   if (t.stage !== "received") return { ok: false, error: "This ticket has moved on; reload the page." };
 
   // Keep variants already chosen for a component (In repair may have set one before a send-back).
@@ -251,10 +255,10 @@ export async function saveReceived(raw: z.input<typeof receivedInput>): Promise<
 async function loadForPartsEdit(ticketId: string) {
   const user = await getCurrentUser();
   if (!user) return { ok: false as const, error: "You're signed out." };
-  if (!canActOn(user.profile.role, "request_part")) return { ok: false as const, error: "Only the brand rep marks parts sent." };
   const supabase = await createClient();
-  const { data: t } = await supabase.from("tickets").select("stage").eq("id", ticketId).maybeSingle();
+  const { data: t } = await supabase.from("tickets").select("stage, workspace_id, brand_id").eq("id", ticketId).maybeSingle();
   if (!t) return { ok: false as const, error: "Ticket not found." };
+  if (!canActOn(user.grants, "request_part", scopeOf(t))) return { ok: false as const, error: "Only the brand rep marks parts sent." };
   if (t.stage !== "request_part") return { ok: false as const, error: "This ticket isn't waiting on parts; reload the page." };
   return { ok: true as const, user, supabase };
 }
@@ -329,10 +333,10 @@ export async function pauseReminders(raw: z.input<typeof pauseInput>): Promise<S
 async function loadForRepairEdit(ticketId: string) {
   const user = await getCurrentUser();
   if (!user) return { ok: false as const, error: "You're signed out." };
-  if (!canActOn(user.profile.role, "in_repair")) return { ok: false as const, error: "Only the watchmaker edits this step." };
   const supabase = await createClient();
-  const { data: t } = await supabase.from("tickets").select("stage, watch_id, repair_complete").eq("id", ticketId).maybeSingle();
+  const { data: t } = await supabase.from("tickets").select("stage, workspace_id, brand_id, watch_id, repair_complete").eq("id", ticketId).maybeSingle();
   if (!t) return { ok: false as const, error: "Ticket not found." };
+  if (!canActOn(user.grants, "in_repair", scopeOf(t))) return { ok: false as const, error: "Only the watchmaker edits this step." };
   if (t.stage !== "in_repair") return { ok: false as const, error: "This ticket isn't in repair; reload the page." };
   return { ok: true as const, user, supabase, ticket: t };
 }
@@ -439,10 +443,10 @@ export async function saveTesting(raw: z.input<typeof testingInput>): Promise<Sa
   const input = parsed.data;
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "You're signed out." };
-  if (!canActOn(user.profile.role, "testing")) return { ok: false, error: "Only the watchmaker edits this step." };
   const supabase = await createClient();
-  const { data: t } = await supabase.from("tickets").select("stage, testing_checks").eq("id", input.ticketId).maybeSingle();
+  const { data: t } = await supabase.from("tickets").select("stage, workspace_id, brand_id, testing_checks").eq("id", input.ticketId).maybeSingle();
   if (!t) return { ok: false, error: "Ticket not found." };
+  if (!canActOn(user.grants, "testing", scopeOf(t))) return { ok: false, error: "Only the watchmaker edits this step." };
   if (t.stage !== "testing") return { ok: false, error: "This ticket isn't in testing; reload the page." };
   const wasComplete = (() => {
     const c = t.testing_checks as Record<string, unknown> | null;
@@ -479,10 +483,10 @@ export async function saveReturnHome(raw: z.input<typeof returnHomeInput>): Prom
   const input = parsed.data;
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "You're signed out." };
-  if (!canActOn(user.profile.role, "shipped_back")) return { ok: false, error: "Only the watchmaker edits this step." };
   const supabase = await createClient();
-  const { data: t } = await supabase.from("tickets").select("stage, in_person_handoff").eq("id", input.ticketId).maybeSingle();
+  const { data: t } = await supabase.from("tickets").select("stage, workspace_id, brand_id, in_person_handoff").eq("id", input.ticketId).maybeSingle();
   if (!t) return { ok: false, error: "Ticket not found." };
+  if (!canActOn(user.grants, "shipped_back", scopeOf(t))) return { ok: false, error: "Only the watchmaker edits this step." };
   if (t.stage !== "shipped_back") return { ok: false, error: "This ticket isn't at Return home; reload the page." };
 
   const { error } = await supabase

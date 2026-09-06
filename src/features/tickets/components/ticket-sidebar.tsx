@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMemo, useState } from "react";
 import { CaretDoubleLeft, CaretDoubleRight, CaretRight, MagnifyingGlass, Plus } from "@phosphor-icons/react";
-import { LIVE_STAGES, STAGE_DEFINITIONS, type Role, type Stage } from "@/features/pipeline";
+import { LIVE_STAGES, STAGE_DEFINITIONS, type Stage } from "@/features/pipeline";
 import { relativeAge } from "@/lib/labels";
 import type { TicketListItem } from "../queries";
 
@@ -12,7 +12,9 @@ type Props = {
   tickets: TicketListItem[];
   /** Recently closed, newest first. Shown in a collapsed group at the bottom. */
   closed: TicketListItem[];
-  role: Role;
+  /** Watchmaker-only people see "My watches" and no New ticket button. */
+  benchOnly: boolean;
+  canCreate: boolean;
 };
 
 /**
@@ -20,7 +22,7 @@ type Props = {
  * pipeline order. Search filters in memory; the list is small. Collapses to
  * a rail showing only stage counts.
  */
-export function TicketSidebar({ tickets, closed, role }: Props) {
+export function TicketSidebar({ tickets, closed, benchOnly, canCreate }: Props) {
   const pathname = usePathname();
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState(false);
@@ -39,8 +41,7 @@ export function TicketSidebar({ tickets, closed, role }: Props) {
   const [closedOpen, setClosedOpen] = useState(false);
   const showClosed = closedOpen || (!!q && closedShown.length > 0);
 
-  const heading = role === "watchmaker" ? "My watches" : "All tickets";
-  const canCreate = role !== "watchmaker";
+  const heading = benchOnly ? "My watches" : "All tickets";
 
   if (collapsed) {
     return (

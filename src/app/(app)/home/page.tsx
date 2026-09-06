@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { PivotMark } from "@/components/brand/pivot-mark";
 import { signOut } from "@/features/auth/actions";
 import { getCurrentUser } from "@/features/auth/queries";
+import { canOpenOps } from "@/features/auth/permissions";
 import { SIGN_IN_PATH } from "@/features/auth/redirect";
 
 export const metadata: Metadata = { title: "Modules" };
@@ -20,7 +21,7 @@ const MODULES = [
 export default async function ModulePickerPage() {
   const user = await getCurrentUser();
   if (!user) redirect(SIGN_IN_PATH);
-  const isAdmin = user.profile.role === "workspace_admin";
+  const isAdmin = canOpenOps(user.grants);
 
   return (
     <div className="flex min-h-screen flex-col items-center bg-canvas px-6 py-14 text-text">

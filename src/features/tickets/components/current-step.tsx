@@ -1,4 +1,4 @@
-import { STAGE_DEFINITIONS, canActOn, isLiveStage, type Role } from "@/features/pipeline";
+import { STAGE_DEFINITIONS, canActOn, isLiveStage, type Grant } from "@/features/pipeline";
 import { asCategories, asChecks, asConditions, type TicketDetail } from "../detail";
 import type { ReturnAddress } from "../schema";
 import { getPartsForWatch, getPartsStock } from "../queries";
@@ -10,9 +10,9 @@ import { ReturnHomeForm } from "./return-home-form";
 import { TestingForm } from "./testing-form";
 
 /** Picks the current stage's form. Stages without a form yet show a placeholder. */
-export async function CurrentStep({ t, role }: { t: TicketDetail; role: Role }) {
+export async function CurrentStep({ t, grants }: { t: TicketDetail; grants: Grant[] }) {
   if (!isLiveStage(t.stage)) return null;
-  const canEdit = canActOn(role, t.stage);
+  const canEdit = canActOn(grants, t.stage, { workspaceId: t.workspace_id, brandId: t.brand_id });
 
   switch (t.stage) {
     case "received": {

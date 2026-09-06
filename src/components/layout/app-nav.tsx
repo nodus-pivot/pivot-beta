@@ -2,7 +2,8 @@ import Link from "next/link";
 import { PivotMark } from "@/components/brand/pivot-mark";
 import type { CurrentUser } from "@/features/auth/queries";
 import type { WorkspaceContext } from "@/features/workspaces/queries";
-import { roleLabel } from "@/lib/labels";
+import { canOpenOps } from "@/features/auth/permissions";
+import { grantsLabel } from "@/lib/labels";
 import { NavLinks } from "./nav-links";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 
@@ -19,12 +20,12 @@ export function AppNav({ user, ws }: { user: CurrentUser; ws: WorkspaceContext }
         <PivotMark size={22} />
         Pivot
       </Link>
-      <NavLinks isAdmin={user.profile.role === "workspace_admin"} />
+      <NavLinks isAdmin={canOpenOps(user.grants)} />
       <div className="ml-auto flex items-center gap-4">
         {ws.current && <WorkspaceSwitcher workspaces={ws.workspaces} currentId={ws.current.id} />}
         <Link href="/home" className="flex items-center gap-2.5 text-[13.5px] text-text-2 hover:text-text">
           <span>
-            {user.profile.display_name} · {roleLabel(user.profile.role)}
+            {user.profile.display_name} · {grantsLabel(user.grants)}
           </span>
           <span className="grid h-7 w-7 place-items-center rounded-full bg-accent-800 text-[12px] font-medium text-accent-text">
             {initial}

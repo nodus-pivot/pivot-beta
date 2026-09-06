@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/features/auth/queries";
 import { SIGN_IN_PATH } from "@/features/auth/redirect";
-import { canActOn } from "@/features/pipeline";
+import { canCreateAnyTicket } from "@/features/auth/permissions";
 import { IntakeForm } from "@/features/tickets/components/intake-form";
 import { getIntakeCatalog } from "@/features/tickets/queries";
 import { getWorkspaceContext } from "@/features/workspaces/queries";
@@ -13,9 +13,9 @@ export const metadata: Metadata = { title: "New ticket" };
 export default async function NewTicketPage() {
   const user = await getCurrentUser();
   if (!user) redirect(SIGN_IN_PATH);
-  if (!canActOn(user.profile.role, "intake")) redirect("/service-center");
   const { current } = await getWorkspaceContext();
   if (!current) redirect("/service-center");
+  if (!canCreateAnyTicket(user.grants, current.id)) redirect("/service-center");
   const catalog = await getIntakeCatalog(current.id);
 
   return (
