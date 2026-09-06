@@ -6,7 +6,7 @@ import { getCurrentUser } from "@/features/auth/queries";
 import { SIGN_IN_PATH } from "@/features/auth/redirect";
 import { PartFormDialog } from "@/features/ops/components/part-form-dialog";
 import { RetireButton } from "@/features/ops/components/retire-button";
-import { AdjustDialog, CancelOrderButton, IntakeDialog, ReceiveDialog, ReorderDialog } from "@/features/ops/components/stock-dialogs";
+import { AdjustDialog, CancelOrderButton, IntakeDialog, ReorderDialog } from "@/features/ops/components/stock-dialogs";
 import { getPartDetail } from "@/features/ops/queries";
 import { STAGE_DEFINITIONS, componentLabel, isLiveStage } from "@/features/pipeline";
 import { formatDate, formatDateTime } from "@/lib/format";
@@ -65,15 +65,15 @@ export default async function PartPage({ params }: Params) {
 
       {canEdit && (
         <div className="mt-5 flex flex-wrap items-center gap-2">
+          <IntakeDialog part={part} orders={part.open_orders} />
           <ReorderDialog part={part} />
-          <IntakeDialog part={part} />
-          <AdjustDialog part={part} />
+          <AdjustDialog part={part} tickets={part.tickets} />
         </div>
       )}
 
       <section className="mt-9">
         <h2 className="text-[16px]">
-          On order<span className="ml-2 text-[13px] font-normal text-text-3">{part.open_orders.length === 0 ? "nothing outstanding" : `${part.on_order_qty} unit${part.on_order_qty === 1 ? "" : "s"} coming`}</span>
+          Reorders in progress<span className="ml-2 text-[13px] font-normal text-text-3">{part.open_orders.length === 0 ? "none" : `${part.on_order_qty} unit${part.on_order_qty === 1 ? "" : "s"} coming · log the delivery with Intake`}</span>
         </h2>
         {part.open_orders.length > 0 && (
           <ul className="mt-3 divide-y divide-border border-y border-border">
@@ -82,12 +82,10 @@ export default async function PartPage({ params }: Params) {
                 <span className="font-mono tabular-nums">{o.qty}</span>
                 <span className="text-text-2">ordered {formatDate(o.ordered_at)}{o.expected_at ? ` · expected ${formatDate(o.expected_at)}` : ""}</span>
                 {o.note && <span className="text-text-3">{o.note}</span>}
-                {canEdit && (
-                  <span className="ml-auto flex items-center gap-4">
-                    <ReceiveDialog part={part} order={o} />
-                    <CancelOrderButton partId={part.id} orderId={o.id} />
-                  </span>
-                )}
+                <span className="ml-auto flex items-center gap-4">
+                  <span className="rounded-full bg-amber-bg px-2 text-[11.5px] text-amber">in progress</span>
+                  {canEdit && <CancelOrderButton partId={part.id} orderId={o.id} />}
+                </span>
               </li>
             ))}
           </ul>

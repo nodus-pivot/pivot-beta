@@ -92,6 +92,8 @@ export type PartDetail = SupplyRow & {
   waiting: WaitingTicket[];
   /** Every watch in the workspace, for the fit editor. */
   watches: { id: string; model: string }[];
+  /** Recent tickets in the workspace, for attaching an adjustment to one. */
+  tickets: { id: string; ticket_number: string; customer_name: string | null }[];
 };
 
 export async function getPartDetail(partId: string, grants: Grant[]): Promise<PartDetail | null> {
@@ -107,11 +109,12 @@ export async function getPartDetail(partId: string, grants: Grant[]): Promise<Pa
     ? supabase.from("stock_movements").select("id, qty_delta, reason, ticket_id, note, unit_cost_at_time, created_at, created_by").eq("part_id", partId).order("created_at", { ascending: false }).limit(100)
     : supabase.from("stock_movements_for_bench").select("id, qty_delta, reason, ticket_id, note, created_at, created_by").eq("part_id", partId).order("created_at", { ascending: false }).limit(100);
 
-  const [ledgerRes, { data: orders }, { data: waiting }, { data: watches }] = await Promise.all([
+  const [ledgerRes, { data: orders }, { data: waiting }, { data: watches }, { data: recentTickets }] = await Promise.all([
     ledgerQuery,
     supabase.from("part_orders").select("id, qty, ordered_at, expected_at, note").eq("part_id", partId).is("received_at", null).order("ordered_at"),
     supabase.from("ticket_parts").select("qty, tickets!inner(id, ticket_number, customer_name, stage)").eq("part_id", partId).is("stock_movement_id", null).neq("tickets.stage", "closed"),
     supabase.from("watches").select("id, model").eq("workspace_id", workspaceId).eq("is_active", true).order("model"),
+    supabase.from("tickets").select("id, ticket_number, customer_name").eq("workspace_id", workspaceId).order("updated_at", { ascending: false }).limit(60),
   ]);
   if (ledgerRes.error) throw ledgerRes.error;
   const ledger = (ledgerRes.data ?? []) as { id: string | null; qty_delta: number | null; reason: string | null; ticket_id: string | null; note: string | null; unit_cost_at_time?: number | null; created_at: string | null; created_by: string | null }[];
@@ -143,6 +146,7 @@ export async function getPartDetail(partId: string, grants: Grant[]): Promise<Pa
         : [],
     ),
     open_orders: orders ?? [],
+    tickets: recentTickets ?? [],
     waiting: (waiting ?? []).map((w) => ({ id: w.tickets.id, ticket_number: w.tickets.ticket_number, customer_name: w.tickets.customer_name, stage: w.tickets.stage, qty: w.qty })),
     watches: watches ?? [],
   };

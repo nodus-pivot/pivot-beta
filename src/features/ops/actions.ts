@@ -129,14 +129,26 @@ const intakeInput = z.object({
   qty: z.preprocess((v) => Number(v), z.number().int().min(1, "Enter how many arrived.").max(100_000)),
   unit_cost: money,
   note: z.string().trim().max(500).transform((v) => v || null),
+  /** The open reorder this delivery fulfils, if any. */
+  order_id: z.string().trim().transform((v) => v || null).pipe(z.uuid().nullable()),
 });
 
-/** Stock arrived outside a recorded reorder. */
+/**
+ * Stock arrived. The only way a count goes up. Naming an open reorder closes
+ * it (through receive_part_order, atomically); otherwise it's a plain intake.
+ */
 export async function addStockIntake(_prev: OpsResult | null, fd: FormData): Promise<OpsResult> {
-  const parsed = intakeInput.safeParse({ partId: fd.get("part_id"), qty: fd.get("qty") ?? "", unit_cost: fd.get("unit_cost") ?? "", note: fd.get("note") ?? "" });
+  const parsed = intakeInput.safeParse({ partId: fd.get("part_id"), qty: fd.get("qty") ?? "", unit_cost: fd.get("unit_cost") ?? "", note: fd.get("note") ?? "", order_id: fd.get("order_id") ?? "" });
   if (!parsed.success) return { ok: false, error: "Fix the highlighted fields.", fieldErrors: fieldErrors(parsed.error.issues) };
   const ctx = await loadPartForEdit(parsed.data.partId);
   if (!ctx.ok) return ctx;
+  if (parsed.data.order_id) {
+    const { error } = await ctx.supabase.rpc("receive_part_order", { p_order: parsed.data.order_id, p_qty: parsed.data.qty, p_unit_cost: parsed.data.unit_cost ?? undefined, p_note: parsed.data.note ?? undefined });
+    if (error) return { ok: false, error: error.message };
+    revalidatePath("/ops", "layout");
+    revalidatePath("/service-center", "layout");
+    return { ok: true };
+  }
   const { error } = await ctx.supabase.from("stock_movements").insert({
     part_id: parsed.data.partId,
     qty_delta: parsed.data.qty,
@@ -154,18 +166,25 @@ const adjustInput = z.object({
   partId: z.uuid(),
   delta: z.preprocess((v) => Number(v), z.number().int().min(-100_000).max(100_000).refine((n) => n !== 0, "Enter a non-zero change.")),
   note: z.string().trim().min(3, "Say why the count changed.").max(500),
+  /** The ticket the correction relates to, if any (a part broken on the bench, say). */
+  ticket_id: z.string().trim().transform((v) => v || null).pipe(z.uuid().nullable()),
 });
 
-/** Correct a count: a recount, breakage, a lost part. The reason is required. */
+/** Correct a count: a recount, breakage, a lost part. The reason is required; a ticket is optional. */
 export async function adjustStock(_prev: OpsResult | null, fd: FormData): Promise<OpsResult> {
-  const parsed = adjustInput.safeParse({ partId: fd.get("part_id"), delta: fd.get("delta") ?? "", note: fd.get("note") ?? "" });
+  const parsed = adjustInput.safeParse({ partId: fd.get("part_id"), delta: fd.get("delta") ?? "", note: fd.get("note") ?? "", ticket_id: fd.get("ticket_id") ?? "" });
   if (!parsed.success) return { ok: false, error: "Fix the highlighted fields.", fieldErrors: fieldErrors(parsed.error.issues) };
   const ctx = await loadPartForEdit(parsed.data.partId);
   if (!ctx.ok) return ctx;
+  if (parsed.data.ticket_id) {
+    const { data: t } = await ctx.supabase.from("tickets").select("id").eq("id", parsed.data.ticket_id).eq("workspace_id", ctx.part.workspace_id).maybeSingle();
+    if (!t) return { ok: false, error: "That ticket isn't in this workspace.", fieldErrors: { ticket_id: "Pick a ticket from this workspace." } };
+  }
   const { error } = await ctx.supabase.from("stock_movements").insert({
     part_id: parsed.data.partId,
     qty_delta: parsed.data.delta,
     reason: "adjustment",
+    ticket_id: parsed.data.ticket_id,
     unit_cost_at_time: ctx.part.unit_cost,
     note: parsed.data.note,
     created_by: ctx.user.id,
@@ -191,27 +210,6 @@ export async function createPartOrder(_prev: OpsResult | null, fd: FormData): Pr
   const ctx = await loadPartForEdit(parsed.data.partId);
   if (!ctx.ok) return ctx;
   const { error } = await ctx.supabase.from("part_orders").insert({ part_id: parsed.data.partId, qty: parsed.data.qty, expected_at: parsed.data.expected_at, note: parsed.data.note, created_by: ctx.user.id });
-  if (error) return { ok: false, error: error.message };
-  revalidatePath("/ops", "layout");
-  revalidatePath("/service-center", "layout");
-  return { ok: true };
-}
-
-const receiveInput = z.object({
-  orderId: z.uuid(),
-  partId: z.uuid(),
-  qty: z.preprocess((v) => Number(v), z.number().int().min(1, "Enter how many arrived.").max(100_000)),
-  unit_cost: money,
-  note: z.string().trim().max(500).transform((v) => v || null),
-});
-
-/** Receive a reorder: adds the stock and closes the order in one database call. */
-export async function receivePartOrder(_prev: OpsResult | null, fd: FormData): Promise<OpsResult> {
-  const parsed = receiveInput.safeParse({ orderId: fd.get("order_id"), partId: fd.get("part_id"), qty: fd.get("qty") ?? "", unit_cost: fd.get("unit_cost") ?? "", note: fd.get("note") ?? "" });
-  if (!parsed.success) return { ok: false, error: "Fix the highlighted fields.", fieldErrors: fieldErrors(parsed.error.issues) };
-  const ctx = await loadPartForEdit(parsed.data.partId);
-  if (!ctx.ok) return ctx;
-  const { error } = await ctx.supabase.rpc("receive_part_order", { p_order: parsed.data.orderId, p_qty: parsed.data.qty, p_unit_cost: parsed.data.unit_cost ?? undefined, p_note: parsed.data.note ?? undefined });
   if (error) return { ok: false, error: error.message };
   revalidatePath("/ops", "layout");
   revalidatePath("/service-center", "layout");
