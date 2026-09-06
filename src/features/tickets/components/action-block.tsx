@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { advanceTicket, reopenTicket, sendTicketBack, type MoveResult } from "../actions";
 import type { SummaryRow } from "../detail";
 import { ConfirmAdvanceDialog, ghostBtn as ghost, primaryBtn as primary } from "./confirm-advance-dialog";
+import { useStageAction } from "./stage-action-context";
 
 export type ActionBlockProps = {
   ticketId: string;
@@ -33,12 +34,18 @@ export function ActionBlock(p: ActionBlockProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [sendEmail, setSendEmail] = useState(true);
-  const [override, setOverride] = useState(false);
+  const [overridePay, setOverridePay] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const { override, setOverride } = useStageAction();
+
+  const nextName = override?.nextName ?? p.nextName;
+  const actionLabel = override?.label ?? `${p.actionLabel ?? "Continue"} → ${p.nextName}`;
+  const email = override ? null : p.email;
+  const summary = override ? [...p.summary, ...override.summaryExtra] : p.summary;
 
   const paymentOnly = p.missing.length === 1 && p.missing[0] === "payment received";
-  const blocked = p.missing.length > 0 && !(paymentOnly && override);
+  const blocked = p.missing.length > 0 && !(paymentOnly && overridePay);
 
   function run(fn: () => Promise<MoveResult>) {
     setError(null);
@@ -47,6 +54,7 @@ export function ActionBlock(p: ActionBlockProps) {
       if (!r.ok) setError(r.error);
       else {
         setOpen(false);
+        setOverride(null);
         router.refresh();
       }
     });
@@ -77,8 +85,8 @@ export function ActionBlock(p: ActionBlockProps) {
   return (
     <div className="border-t border-border pt-6">
       <div className="flex flex-wrap items-center gap-4">
-        <button type="button" disabled={blocked || pending || !p.nextName} onClick={() => setOpen(true)} className={primary}>
-          {p.actionLabel ?? "Continue"} → {p.nextName}
+        <button type="button" disabled={blocked || pending || !nextName} onClick={() => setOpen(true)} className={primary}>
+          {actionLabel}
         </button>
         {p.missing.length > 0 && (
           <span className="text-[13.5px] text-text-3">
@@ -94,15 +102,15 @@ export function ActionBlock(p: ActionBlockProps) {
 
       {paymentOnly && p.canOverridePayment && (
         <label className="mt-3 flex items-center gap-2.5 text-[13.5px] text-amber">
-          <input type="checkbox" checked={override} onChange={(e) => setOverride(e.target.checked)} className="h-4 w-4 accent-[var(--pivot-amber)]" />
+          <input type="checkbox" checked={overridePay} onChange={(e) => setOverridePay(e.target.checked)} className="h-4 w-4 accent-[var(--pivot-amber)]" />
           Owner override: ship without payment
         </label>
       )}
 
-      {p.email && (
+      {email && (
         <label className="mt-4 flex items-center gap-2.5 text-[13.5px] text-text-2">
           <input type="checkbox" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} className="h-4 w-4 accent-[var(--pivot-accent)]" />
-          Email customer “{p.email.name}” when advancing
+          Email customer “{email.name}” when advancing
           <span className="text-text-3">· logged only in the beta</span>
         </label>
       )}
@@ -112,13 +120,15 @@ export function ActionBlock(p: ActionBlockProps) {
         open={open}
         onOpenChange={setOpen}
         currentName={p.currentName}
-        nextName={p.nextName ?? ""}
-        summary={p.summary}
-        email={p.email ? { name: p.email.name, to: p.email.to, checked: sendEmail, onChange: setSendEmail } : undefined}
-        confirmLabel={`${p.actionLabel ?? "Continue"} → ${p.nextName}`}
+        nextName={nextName ?? ""}
+        summary={summary}
+        email={email ? { name: email.name, to: email.to, checked: sendEmail, onChange: setSendEmail } : undefined}
+        confirmLabel={actionLabel}
         pending={pending}
         error={error}
-        onConfirm={() => run(() => advanceTicket({ ticketId: p.ticketId, sendEmail, overridePayment: override }))}
+        onConfirm={() =>
+          run(() => (override ? override.run() : advanceTicket({ ticketId: p.ticketId, sendEmail, overridePayment: overridePay })))
+        }
       />
     </div>
   );

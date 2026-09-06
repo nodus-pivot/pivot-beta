@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Plus } from "@phosphor-icons/react";
 import {
   COMPONENTS,
@@ -13,8 +13,7 @@ import {
 } from "@/features/pipeline";
 import { formatDate } from "@/lib/format";
 import { requestPartsAction, saveReceived } from "../actions";
-import type { SummaryRow } from "../detail";
-import { ConfirmAdvanceDialog } from "./confirm-advance-dialog";
+import { useStageAction } from "./stage-action-context";
 
 type Props = {
   ticketId: string;
@@ -24,10 +23,10 @@ type Props = {
   receivedAt: string | null;
   conditions: IntakeCondition[];
   notes: string | null;
-  /** Name of the brand rep the request goes to, for the button label. */
-  repName: string;
-  /** What's recorded at this stage so far, for the confirm dialog. */
-  summary: SummaryRow[];
+  /** Whose inventory the parts come from; the rep at that brand ships them. */
+  brandName: string;
+  /** Parts already requested on this ticket (a pending request from an earlier pass). */
+  pendingParts: { name: string; sent_at: string | null }[];
 };
 
 type Status = "idle" | "saving" | "saved" | "error";
@@ -49,9 +48,8 @@ export function ReceivedForm(p: Props) {
   const [parts, setParts] = useState<Component[]>([]);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, start] = useTransition();
-  const [requesting, startRequest] = useTransition();
+  const { setOverride } = useStageAction();
 
   function persist(next: { received: boolean; grid: IntakeCondition[]; notes: string }) {
     setStatus("saving");
@@ -94,19 +92,22 @@ export function ReceivedForm(p: Props) {
     setParts((ps) => (ps.includes(c) ? ps.filter((x) => x !== c) : [...ps, c]));
   }
 
-  function sendRequest() {
-    setError(null);
-    startRequest(async () => {
-      const r = await requestPartsAction({ ticketId: p.ticketId, components: parts });
-      if (!r.ok) setError(r.error);
-      else {
-        setConfirmOpen(false);
-        router.refresh();
-      }
+  // Picked parts turn the frame's primary action into the parts request (one button, two destinations).
+  useEffect(() => {
+    if (parts.length === 0) {
+      setOverride(null);
+      return;
+    }
+    const names = parts.map((c) => COMPONENT_LABELS[c]).join(", ");
+    const ticketId = p.ticketId;
+    setOverride({
+      label: `Request parts from ${p.brandName} → Request Part`,
+      nextName: "Request Part",
+      summaryExtra: [{ label: "Parts requested", value: `${names} · for ${p.watchModel}` }],
+      run: () => requestPartsAction({ ticketId, components: parts }),
     });
-  }
-
-  const partsLine = parts.map((c) => COMPONENT_LABELS[c]).join(", ");
+    return () => setOverride(null);
+  }, [parts, p.ticketId, p.brandName, p.watchModel, setOverride]);
 
   const dis = !p.canEdit;
 
@@ -115,7 +116,7 @@ export function ReceivedForm(p: Props) {
       <div className="flex items-baseline justify-between">
         <div>
           <h2 className="text-[22px]">Received &amp; Diagnostics</h2>
-          <p className="mt-1 text-[14.5px] text-text-2">Tick the box, tick the condition grid, add a note if needed. Need a part? Pick it and send — the ticket hands to {p.repName}.</p>
+          <p className="mt-1 text-[14.5px] text-text-2">Tick the box, tick the condition grid, add a note if needed. Need a part? Pick it below and the ticket hands to {p.brandName} to ship it.</p>
         </div>
         <span className="flex-none text-[12.5px] text-text-3" aria-live="polite">
           {status === "saving" || pending ? "Saving…" : status === "saved" ? "Saved" : status === "error" ? "Couldn't save" : ""}
@@ -202,7 +203,7 @@ export function ReceivedForm(p: Props) {
 
       <div>
         <span className={label}>
-          Need a part from the brand?<span className={hint}>tap what you need · optional</span>
+          Need a part from {p.brandName}?<span className={hint}>tap what you need · optional</span>
         </span>
         <div className="mt-3 flex flex-wrap gap-2">
           {COMPONENTS.map((c) => (
@@ -211,36 +212,20 @@ export function ReceivedForm(p: Props) {
             </button>
           ))}
         </div>
-        <div className="mt-4 flex flex-wrap items-center gap-4">
-          <button
-            type="button"
-            disabled={dis || parts.length === 0 || requesting}
-            onClick={() => setConfirmOpen(true)}
-            className="inline-flex h-10 items-center rounded-lg border border-accent px-4 text-[14.5px] text-accent-text transition-colors hover:bg-accent-900 disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
-          >
-            {requesting ? "Sending…" : `Send request to ${p.repName} → Request Part`}
-          </button>
-          {parts.length > 0 && (
-            <span className="text-[13.5px] text-text-3">
-              {parts.map((c) => COMPONENT_LABELS[c]).join(", ")} · for {p.watchModel}
-            </span>
-          )}
-        </div>
+        {parts.length > 0 && (
+          <p className="mt-3 text-[13.5px] text-text-3">
+            {parts.map((c) => COMPONENT_LABELS[c]).join(", ")} · for {p.watchModel}. Use the button below to send the request.
+          </p>
+        )}
+        {p.pendingParts.length > 0 && (
+          <p className="mt-3 rounded-lg border border-amber-border bg-amber-bg px-3 py-2 text-[13.5px] text-amber">
+            Already requested from {p.brandName}: {p.pendingParts.map((x) => `${x.name}${x.sent_at ? " (sent)" : ""}`).join(", ")}. Continue goes back to Request Part until they ship.
+          </p>
+        )}
       </div>
 
       {error && <p className="text-[13px] text-red">{error}</p>}
 
-      <ConfirmAdvanceDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        currentName="Received & Diagnostics"
-        nextName="Request Part"
-        summary={[...p.summary, { label: "Parts requested", value: `${partsLine} · for ${p.watchModel}` }]}
-        confirmLabel={`Send request to ${p.repName} → Request Part`}
-        pending={requesting}
-        error={error}
-        onConfirm={sendRequest}
-      />
     </div>
   );
 }

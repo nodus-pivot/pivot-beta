@@ -16,6 +16,7 @@ import { ActionBlock } from "./action-block";
 import { EarlierSteps } from "./earlier-steps";
 import { MetaStrip } from "./meta-strip";
 import { PipelineRow } from "./pipeline-row";
+import { StageActionProvider } from "./stage-action-context";
 import { TicketHeader } from "./ticket-header";
 import { Timeline } from "./timeline";
 
@@ -44,6 +45,8 @@ export function TicketFrame({ t, role, settings, children }: Props) {
   const def = STAGE_DEFINITIONS[stage];
   const email = next ? emailOnEnter(next) : null;
   const ownerLabel = def.owners.map(roleLabel).join(" / ") || "Owner";
+  // Received's default label assumes no part is needed; once a request is pending, Continue goes to Request Part.
+  const actionLabel = stage === "received" && next === "request_part" ? "Continue" : def.actionLabel;
 
   return (
     <article className="mx-auto max-w-[860px] px-16 py-11">
@@ -59,15 +62,16 @@ export function TicketFrame({ t, role, settings, children }: Props) {
         <EarlierSteps t={t} stages={earlier} />
       </div>
 
-      <section className="mt-10">{children}</section>
+      <StageActionProvider>
+        <section className="mt-10">{children}</section>
 
-      <div className="mt-10">
-        <ActionBlock
+        <div className="mt-10">
+          <ActionBlock
           ticketId={t.id}
           currentName={def.name}
           nextName={next ? STAGE_DEFINITIONS[next].name : null}
           previousName={prev ? STAGE_DEFINITIONS[prev].name : null}
-          actionLabel={def.actionLabel}
+          actionLabel={actionLabel}
           missing={missingFor(pt, role)}
           canAct={canActOn(role, stage)}
           ownerLabel={ownerLabel}
@@ -76,8 +80,9 @@ export function TicketFrame({ t, role, settings, children }: Props) {
           email={email ? { name: email.name, to: t.customer_email } : null}
           summary={stageSummaryRows(stage, t)}
           canOverridePayment={role === "workspace_admin"}
-        />
-      </div>
+          />
+        </div>
+      </StageActionProvider>
 
       <div className="mt-12">
         <Timeline ticketId={t.id} events={t.events} />
