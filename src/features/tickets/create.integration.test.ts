@@ -207,9 +207,55 @@ describe.skipIf(!enabled)("createTicket (integration)", () => {
     await db.from("stock_movements").insert({ part_id: GASKET, qty_delta: -3, reason: "adjustment", note: "integration test cleanup" });
     await db.from("part_orders").delete().eq("id", order!.id);
 
+    // Demand: a diagnosed replacement that hasn't been taken from stock counts as waiting.
+    const CROWN = "a0000000-0000-4000-8000-000000000202";
+    const t = await createTicket(
+      db,
+      { workspaceId: NODUS, ticketPrefix: "NW", actorId: userId },
+      {
+        customer_name: "Demand Test", customer_email: "demand@example.com", customer_phone: null,
+        brand_id: NODUS_BRAND, watch_id: SECTOR_DEEP, watch_serial: null,
+        issue_description: "demand test", return_address: { line1: null, line2: null, city: null, state: null, postal_code: null, country: null },
+        requires_payment: false, priority: false, send_email: false,
+      },
+    );
+    created.push(t.id);
+    await db.from("ticket_parts").insert({ ticket_id: t.id, part_id: CROWN, component: "crown_tube", name: "Crown, signed", sku: "CR-SD-01", source: "brand", requested_at: new Date().toISOString(), requested_by: userId });
     const { data: demand } = await db.rpc("part_demand", { p_workspace: NODUS });
-    const dial = demand?.find((d) => d.part_id === "a0000000-0000-4000-8000-000000000206");
-    expect(dial?.ticket_count).toBeGreaterThanOrEqual(1);
+    expect(demand?.find((d) => d.part_id === CROWN)?.ticket_count).toBeGreaterThanOrEqual(1);
+  });
+
+  it("an owner can create a person, grant and revoke access, and deactivate them", async () => {
+    await signIn();
+    const admin = createClient<Database>(url, env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false, autoRefreshToken: false } });
+    const email = `integration-${Date.now()}@example.com`;
+    const { data: created, error: e1 } = await admin.auth.admin.createUser({ email, password: "TemporaryPassw0rd!", email_confirm: true });
+    expect(e1).toBeNull();
+    const personId = created.user!.id;
+    try {
+      expect((await admin.from("profiles").insert({ id: personId, email, display_name: "Integration Person" })).error).toBeNull();
+      // Grant as the owner (RLS), then read it back through the people query path.
+      // No RETURNING: the read policy checks user_in_scope(), which can't see a row inserted by the same statement.
+      const { error: e2 } = await db.from("memberships").insert({ user_id: personId, role: "watchmaker", brand_id: NODUS_BRAND, created_by: userId });
+      expect(e2).toBeNull();
+      const { data: grant } = await db.from("memberships").select("id").eq("user_id", personId).single();
+      expect(grant?.id).toBeTruthy();
+      const { data: seen } = await db.from("profiles").select("id").eq("id", personId).maybeSingle();
+      expect(seen?.id).toBe(personId);
+      // Deactivate through the checked function; the person can no longer flip it back.
+      expect((await db.rpc("admin_update_profile", { p_user: personId, p_display_name: "Integration Person", p_is_active: false })).error).toBeNull();
+      const { data: prof } = await db.from("profiles").select("is_active").eq("id", personId).single();
+      expect(prof?.is_active).toBe(false);
+      // Revoke.
+      const { data: removed } = await db.from("memberships").delete().eq("id", grant!.id).select("id");
+      expect(removed?.length).toBe(1);
+      // Nobody may delete their own grants.
+      const { data: own } = await db.from("memberships").select("id").eq("user_id", userId).eq("role", "owner").single();
+      const { data: selfRemoved } = await db.from("memberships").delete().eq("id", own!.id).select("id");
+      expect(selfRemoved?.length ?? 0).toBe(0);
+    } finally {
+      await admin.auth.admin.deleteUser(personId);
+    }
   });
 
   it("refuses a watch that isn't sold under the chosen brand", async () => {
