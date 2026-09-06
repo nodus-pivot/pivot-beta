@@ -2,6 +2,7 @@ import { STAGE_DEFINITIONS, canActOn, isLiveStage, type Role } from "@/features/
 import { asCategories, asChecks, asConditions, type TicketDetail } from "../detail";
 import type { ReturnAddress } from "../schema";
 import { getPartsForWatch, getPartsStock } from "../queries";
+import { ClosedSummary } from "./closed-summary";
 import { InRepairForm } from "./in-repair-form";
 import { ReceivedForm } from "./received-form";
 import { RequestPartForm } from "./request-part-form";
@@ -93,6 +94,8 @@ export async function CurrentStep({ t, role }: { t: TicketDetail; role: Role }) 
         />
       );
     }
+    case "closed":
+      return <ClosedSummary t={t} />;
     default: {
       const name = STAGE_DEFINITIONS[t.stage].name;
       return (
