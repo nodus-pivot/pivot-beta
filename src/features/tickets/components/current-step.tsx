@@ -2,6 +2,7 @@ import { STAGE_DEFINITIONS, canActOn, isLiveStage, type Grant } from "@/features
 import { asCategories, asChecks, asConditions, type TicketDetail } from "../detail";
 import type { ReturnAddress } from "../schema";
 import { getPartsForWatch, getPartsStock } from "../queries";
+import { addressLines, getWorkspaceContext, type Address } from "@/features/workspaces/queries";
 import { ClosedSummary } from "./closed-summary";
 import { InRepairForm } from "./in-repair-form";
 import { ReceivedForm } from "./received-form";
@@ -35,7 +36,12 @@ export async function CurrentStep({ t, grants }: { t: TicketDetail; grants: Gran
     }
     case "request_part": {
       const brandParts = t.parts.filter((x) => x.source === "brand");
-      const stock = await getPartsStock(brandParts.map((x) => x.part_id).filter((id): id is string => !!id));
+      const [stock, { workspaces }] = await Promise.all([
+        getPartsStock(brandParts.map((x) => x.part_id).filter((id): id is string => !!id)),
+        getWorkspaceContext(),
+      ]);
+      const bench = (workspaces.find((w) => w.id === t.workspace_id)?.bench_address ?? null) as Address | null;
+      const shipTo = bench && addressLines(bench).length ? { name: bench.name ?? "The bench", lines: addressLines(bench) } : null;
       return (
         <RequestPartForm
           ticketId={t.id}
@@ -55,7 +61,7 @@ export async function CurrentStep({ t, grants }: { t: TicketDetail; grants: Gran
           }))}
           requestedAt={t.parts_requested_at}
           snoozedUntil={t.parts_reminder_snoozed_until}
-          shipTo={null}
+          shipTo={shipTo}
         />
       );
     }
