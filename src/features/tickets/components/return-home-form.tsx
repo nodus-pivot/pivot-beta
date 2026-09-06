@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { saveReturnHome } from "../actions";
 import { CARRIERS, type ReturnAddress } from "../schema";
+import { EditCustomerDialog } from "./edit-customer-dialog";
 
 type Carrier = (typeof CARRIERS)[number];
 
@@ -11,6 +12,8 @@ type Props = {
   ticketId: string;
   canEdit: boolean;
   customerName: string | null;
+  customerEmail: string | null;
+  customerPhone: string | null;
   address: ReturnAddress | null;
   requiresPayment: boolean;
   paymentStatus: "none" | "invoiced" | "paid";
@@ -88,9 +91,11 @@ export function ReturnHomeForm(p: Props) {
       )}
 
       <div>
-        <span className={label}>
+        <span className={`${label} flex items-center gap-3`}>
           Ship to
-          <button type="button" disabled title="Coming soon" className="ml-3 text-[13px] font-normal text-accent-text opacity-60">Edit</button>
+          <span className="text-[13px] font-normal">
+            <EditCustomerDialog ticketId={p.ticketId} customer={{ name: p.customerName, email: p.customerEmail, phone: p.customerPhone }} address={p.address} canEdit />
+          </span>
         </span>
         <div className="mt-2 rounded-lg border border-border bg-surface px-4 py-3 text-[14.5px]">
           <p className="font-medium">{p.customerName ?? "—"}</p>

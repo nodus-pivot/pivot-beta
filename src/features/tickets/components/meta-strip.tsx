@@ -1,6 +1,8 @@
 import { formatDate } from "@/lib/format";
 import { relativeAge } from "@/lib/labels";
 import type { TicketDetail } from "../detail";
+import type { ReturnAddress } from "../schema";
+import { EditCustomerDialog } from "./edit-customer-dialog";
 
 /** The hairline strip under the pipeline: Received · Est. done · Payment · Customer · Emails. */
 export function MetaStrip({ t }: { t: TicketDetail }) {
@@ -21,11 +23,18 @@ export function MetaStrip({ t }: { t: TicketDetail }) {
         <Item label="Est. done" value={formatDate(t.estimated_done_at)} />
       )}
       <Item label="Payment" value={payment} tone={t.requires_payment && t.payment_status !== "paid" ? "amber" : undefined} />
-      <Item
-        label="Customer"
-        value={[t.customer_email, t.customer_phone].filter(Boolean).join(" · ") || "—"}
-        action="Edit"
-      />
+      <div className="flex items-baseline gap-2">
+        <dt className="text-text-3">Customer</dt>
+        <dd className="text-text-2">
+          {[t.customer_email, t.customer_phone].filter(Boolean).join(" · ") || "—"}
+          <EditCustomerDialog
+            ticketId={t.id}
+            customer={{ name: t.customer_name, email: t.customer_email, phone: t.customer_phone }}
+            address={(t.return_address as ReturnAddress | null) ?? null}
+            canEdit={t.stage !== "closed"}
+          />
+        </dd>
+      </div>
       <Item label="Emails" value={`${emails} logged`} action="View" />
     </dl>
   );

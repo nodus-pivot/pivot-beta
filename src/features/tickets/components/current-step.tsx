@@ -85,6 +85,8 @@ export async function CurrentStep({ t, role }: { t: TicketDetail; role: Role }) 
           ticketId={t.id}
           canEdit={canEdit}
           customerName={t.customer_name}
+          customerEmail={t.customer_email}
+          customerPhone={t.customer_phone}
           address={(t.return_address as ReturnAddress | null) ?? null}
           requiresPayment={t.requires_payment}
           paymentStatus={t.payment_status as "none" | "invoiced" | "paid"}

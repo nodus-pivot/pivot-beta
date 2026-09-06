@@ -25,6 +25,7 @@ function describe(e: TicketEvent): string {
     case "testing_complete":
     case "tracking_entered":
     case "handoff":
+    case "customer_updated":
     case "reminders_paused": return `${who} ${e.body ?? e.type.replace(/_/g, " ")}`;
     default: return e.body ?? e.type;
   }

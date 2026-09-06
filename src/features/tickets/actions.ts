@@ -12,7 +12,7 @@ import { CreateTicketError, createTicket } from "./create";
 import { asCategories, toPipelineTicket } from "./detail";
 import { getPartsForWatch, getTicketDetail } from "./queries";
 import { applyTransition } from "./transition";
-import { CARRIERS, createTicketSchema, intakeFormToInput } from "./schema";
+import { CARRIERS, createTicketSchema, intakeFormToInput, returnAddressSchema } from "./schema";
 
 export type IntakeState = {
   error?: string;
@@ -516,4 +516,71 @@ export async function saveReturnHome(raw: z.input<typeof returnHomeInput>): Prom
   }
   revalidatePath(`/service-center/tickets/${input.ticketId}`);
   return { ok: true };
+}
+
+/* ---------------------------------------------------------------- edit customer (modal, not drawn) */
+
+const customerInput = z.object({
+  ticketId: z.uuid(),
+  customer_name: z.string().trim().min(1, "Enter the customer's name.").max(200),
+  customer_email: z.string().trim().toLowerCase().pipe(z.email("Enter a valid email address.")),
+  customer_phone: z.string().trim().max(50).nullable(),
+  return_address: returnAddressSchema,
+});
+
+export type CustomerState = { error?: string; fieldErrors?: Partial<Record<string, string>>; saved?: boolean };
+
+const ADDRESS_LABELS: Record<string, string> = { line1: "street", line2: "apt/suite", city: "city", state: "state", postal_code: "ZIP", country: "country" };
+
+/** Edit customer: name, email, phone and return address, from the meta strip or the ship-to card. */
+export async function updateCustomer(_prev: CustomerState, fd: FormData): Promise<CustomerState> {
+  const parsed = customerInput.safeParse({
+    ticketId: fd.get("ticket_id"),
+    customer_name: fd.get("customer_name") ?? "",
+    customer_email: fd.get("customer_email") ?? "",
+    customer_phone: ((fd.get("customer_phone") as string) || "").trim() || null,
+    return_address: {
+      line1: fd.get("address_line1") ?? "",
+      line2: fd.get("address_line2") ?? "",
+      city: fd.get("address_city") ?? "",
+      state: fd.get("address_state") ?? "",
+      postal_code: fd.get("address_postal_code") ?? "",
+      country: fd.get("address_country") ?? "",
+    },
+  });
+  if (!parsed.success) {
+    const fieldErrors: Record<string, string> = {};
+    for (const i of parsed.error.issues) {
+      const k = i.path[0];
+      if (typeof k === "string" && !fieldErrors[k]) fieldErrors[k] = i.message;
+    }
+    return { error: "Fix the highlighted fields.", fieldErrors };
+  }
+  const input = parsed.data;
+  const user = await getCurrentUser();
+  if (!user) return { error: "You're signed out." };
+  const supabase = await createClient();
+  const { data: t } = await supabase.from("tickets").select("stage, customer_name, customer_email, customer_phone, return_address").eq("id", input.ticketId).maybeSingle();
+  if (!t) return { error: "Ticket not found." };
+  if (t.stage === "closed") return { error: "Reopen the ticket to edit the customer." };
+
+  const before = (t.return_address ?? {}) as Record<string, string | null>;
+  const changed: string[] = [];
+  if (t.customer_name !== input.customer_name) changed.push("name");
+  if ((t.customer_email ?? "").toLowerCase() !== input.customer_email) changed.push("email");
+  if ((t.customer_phone ?? null) !== input.customer_phone) changed.push("phone");
+  for (const [k, label] of Object.entries(ADDRESS_LABELS)) {
+    if ((before[k] ?? null) !== (input.return_address[k as keyof typeof input.return_address] ?? null)) changed.push(label);
+  }
+
+  const { error } = await supabase
+    .from("tickets")
+    .update({ customer_name: input.customer_name, customer_email: input.customer_email, customer_phone: input.customer_phone, return_address: input.return_address })
+    .eq("id", input.ticketId);
+  if (error) return { error: error.message };
+  if (changed.length) {
+    await supabase.from("ticket_events").insert({ ticket_id: input.ticketId, type: "customer_updated", actor_id: user.id, body: `updated ${changed.join(", ")}` });
+  }
+  revalidatePath("/service-center", "layout");
+  return { saved: true };
 }
