@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { afterAll, describe, expect, it } from "vitest";
 import type { Database } from "@/lib/supabase/database.types";
-import { advance, requestParts, sendBack } from "@/features/pipeline";
+import { advance, sendBack } from "@/features/pipeline";
 import { createTicket } from "./create";
 import { toPipelineTicket } from "./detail";
 import { applyTransition } from "./transition";
@@ -117,7 +117,7 @@ describe.skipIf(!enabled)("createTicket (integration)", () => {
     expect(after.events.map((e) => e.type)).toEqual(["created", "stage_changed", "email_skipped", "sent_back", "stage_changed", "email_logged"]);
   });
 
-  it("requesting parts branches into Request Part and stamps parts_requested_at", async () => {
+  it("a Replace decision with a part branches Continue into Request Part and stamps parts_requested_at", async () => {
     await signIn();
     const t = await createTicket(
       db,
@@ -130,11 +130,12 @@ describe.skipIf(!enabled)("createTicket (integration)", () => {
       },
     );
     created.push(t.id);
-    await db.from("ticket_parts").insert({ ticket_id: t.id, component: "crown_tube", name: "Crown/Tube", source: "brand", requested_at: new Date().toISOString(), requested_by: userId });
+    await db.from("ticket_parts").insert({ ticket_id: t.id, part_id: "a0000000-0000-4000-8000-000000000202", component: "crown_tube", name: "Crown, signed", sku: "CR-SD-01", source: "brand", requested_at: new Date().toISOString(), requested_by: userId });
+    await db.from("tickets").update({ watch_received_at: new Date().toISOString(), repair_categories: [{ component: "crown_tube", action: "replace" }] }).eq("id", t.id);
     const { data: parts } = await db.from("ticket_parts").select("*").eq("ticket_id", t.id);
     const { data: row } = await db.from("tickets").select("*").eq("id", t.id).single();
     const pt = toPipelineTicket({ ...row!, watch: { model: "", reference: null, warranty_months: null }, brand: { name: "" }, parts: parts ?? [], shipments: [], events: [] });
-    const r = requestParts(pt, "workspace_admin");
+    const r = advance(pt, "workspace_admin", { sendReturnLabelEnabled: false });
     expect(r).toMatchObject({ ok: true, to: "request_part" });
     if (r.ok) await applyTransition(db, t.id, userId, r, false);
     const { data: after } = await db.from("tickets").select("stage, parts_requested_at").eq("id", t.id).single();

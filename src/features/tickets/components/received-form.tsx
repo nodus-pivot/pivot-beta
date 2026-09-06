@@ -1,12 +1,25 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Plus } from "@phosphor-icons/react";
-import { INTAKE_COMPONENTS, INTAKE_CONDITIONS, type IntakeCondition } from "@/features/pipeline";
+import {
+  COMPONENTS,
+  COMPONENT_LABELS,
+  INTAKE_CONDITIONS,
+  type Component,
+  type IntakeCondition,
+  type RepairCategory,
+} from "@/features/pipeline";
 import { formatDate } from "@/lib/format";
-import { requestPartsAction, saveReceived } from "../actions";
-import { useStageAction } from "./stage-action-context";
+import { saveReceived } from "../actions";
+
+type CatalogPart = { id: string; name: string; sku: string; component: string };
+type Condition = (typeof INTAKE_CONDITIONS)[number];
+type Action = "repair" | "replace" | null;
+
+/** One row of the diagnosis grid. */
+type Row = { component: Component; conditions: Condition[]; action: Action; part_id: string | null; part_name: string | null };
 
 type Props = {
   ticketId: string;
@@ -15,46 +28,72 @@ type Props = {
   issue: string | null;
   receivedAt: string | null;
   conditions: IntakeCondition[];
+  categories: RepairCategory[];
   notes: string | null;
-  /** Whose inventory the parts come from; the rep at that brand ships them. */
   brandName: string;
   /** Catalog parts that fit this watch (name + SKU; the bench never sees cost or stock). */
-  catalogParts: { id: string; name: string; sku: string }[];
-  /** Parts already on the request. Unsent ones are the current selection; sent ones are locked. */
-  pendingParts: { id: string; part_id: string | null; name: string; sent_at: string | null }[];
+  catalogParts: CatalogPart[];
+  /** Brand parts already on the ticket; sent ones are locked. */
+  parts: { id: string; part_id: string | null; name: string; component: string | null; sent_at: string | null }[];
 };
 
 type Status = "idle" | "saving" | "saved" | "error";
 
 const label = "block text-[13.5px] font-medium text-text-2";
 const hint = "ml-2 text-[13px] font-normal text-text-3";
+const seg = (on: boolean, disabled: boolean) =>
+  `rounded-full border px-2.5 py-0.5 text-[12.5px] transition-colors ${
+    on ? "border-accent bg-accent-900 text-accent-text" : "border-border-strong text-text-2 hover:border-accent-text"
+  } ${disabled ? "cursor-default opacity-50 hover:border-border-strong" : ""}`;
 
-/** Received & Diagnostics (design 1c). Autosaves on every change; no Save button. */
+function buildRows(p: Props): Row[] {
+  return COMPONENTS.map((component) => {
+    const cond = p.conditions.find((c) => c.component === component);
+    const cat = p.categories.find((c) => c.component === component);
+    const action: Action = cat?.action === "repair" || cat?.action === "replace" ? cat.action : null;
+    const part = p.parts.find((x) => x.component === component && !x.sent_at);
+    return {
+      component,
+      conditions: (cond?.conditions ?? []).filter((c): c is Condition => (INTAKE_CONDITIONS as readonly string[]).includes(c)),
+      action,
+      part_id: part?.part_id ?? null,
+      part_name: part && !part.part_id ? part.name : null,
+    };
+  });
+}
+
+/**
+ * Received & Diagnostics (design 1c, revised): one grid, a row per component,
+ * with conditions on arrival and a Repair / Replace decision. Replace picks the
+ * part; those picks are what Request Part checks and what In repair starts from.
+ * Autosaves on every change.
+ */
 export function ReceivedForm(p: Props) {
   const router = useRouter();
   const [received, setReceived] = useState(!!p.receivedAt);
   const [receivedAt, setReceivedAt] = useState(p.receivedAt);
-  const [grid, setGrid] = useState<IntakeCondition[]>(p.conditions);
+  const [rows, setRows] = useState<Row[]>(() => buildRows(p));
   const [notes, setNotes] = useState(p.notes ?? "");
-  const [partIds, setPartIds] = useState<string[]>(p.pendingParts.filter((x) => !x.sent_at && x.part_id).map((x) => x.part_id as string));
-  const [other, setOther] = useState<string[]>(p.pendingParts.filter((x) => !x.sent_at && !x.part_id).map((x) => x.name));
-  const [otherDraft, setOtherDraft] = useState("");
-  const sentParts = p.pendingParts.filter((x) => x.sent_at);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const { setOverride } = useStageAction();
+  const dis = !p.canEdit;
 
-  function persist(next: { received: boolean; grid: IntakeCondition[]; notes: string }) {
+  function persist(next: { received?: boolean; rows?: Row[]; notes?: string }) {
+    const s = { received, rows, notes, ...next };
     setStatus("saving");
+    setError(null);
     start(async () => {
-      // The grid only ever holds values from the two constant lists; the action re-validates.
-      const conditions = next.grid as Parameters<typeof saveReceived>[0]["conditions"];
-      const r = await saveReceived({ ticketId: p.ticketId, received: next.received, conditions, notes: next.notes.trim() || null });
+      const r = await saveReceived({
+        ticketId: p.ticketId,
+        received: s.received,
+        rows: s.rows.filter((r) => r.conditions.length > 0 || r.action),
+        notes: s.notes.trim() || null,
+      });
       if (r.ok) {
         setStatus("saved");
-        if (next.received && !receivedAt) setReceivedAt(new Date().toISOString());
-        router.refresh(); // the action block's "N left" reads from the server
+        if (s.received && !receivedAt) setReceivedAt(new Date().toISOString());
+        router.refresh();
       } else {
         setStatus("error");
         setError(r.error);
@@ -62,66 +101,39 @@ export function ReceivedForm(p: Props) {
     });
   }
 
-  function toggleReceived(v: boolean) {
-    setReceived(v);
-    persist({ received: v, grid, notes });
+  function update(component: Component, patch: Partial<Row>) {
+    const next = rows.map((r) => (r.component === component ? { ...r, ...patch } : r));
+    setRows(next);
+    persist({ rows: next });
   }
 
-  function isOn(component: string, condition: string) {
-    return grid.some((c) => c.component === component && c.conditions.includes(condition));
+  function toggleCondition(row: Row, c: Condition) {
+    const conditions = row.conditions.includes(c) ? row.conditions.filter((x) => x !== c) : [...row.conditions, c];
+    update(row.component, { conditions });
   }
 
-  function toggleCell(component: string, condition: string) {
-    const row = grid.find((c) => c.component === component);
-    const conds = row ? (row.conditions.includes(condition) ? row.conditions.filter((x) => x !== condition) : [...row.conditions, condition]) : [condition];
-    const next = grid.filter((c) => c.component !== component);
-    if (conds.length) next.push({ component, conditions: conds });
-    // keep row order stable
-    next.sort((a, b) => INTAKE_COMPONENTS.indexOf(a.component as (typeof INTAKE_COMPONENTS)[number]) - INTAKE_COMPONENTS.indexOf(b.component as (typeof INTAKE_COMPONENTS)[number]));
-    setGrid(next);
-    persist({ received, grid: next, notes });
-  }
-
-  function togglePart(id: string) {
-    setPartIds((ps) => (ps.includes(id) ? ps.filter((x) => x !== id) : [...ps, id]));
-  }
-
-  function addOther() {
-    const name = otherDraft.trim();
-    if (!name) return;
-    if (!other.some((o) => o.toLowerCase() === name.toLowerCase())) setOther((os) => [...os, name]);
-    setOtherDraft("");
-  }
-
-  // Picked parts turn the frame's primary action into the parts request (one button, two destinations).
-  const selectedNames = [...partIds.map((id) => p.catalogParts.find((c) => c.id === id)?.name ?? "?"), ...other];
-  const originalIds = p.pendingParts.filter((x) => !x.sent_at && x.part_id).map((x) => x.part_id as string);
-  const originalOther = p.pendingParts.filter((x) => !x.sent_at && !x.part_id).map((x) => x.name);
-  const unchanged = sameSet(partIds, originalIds) && sameSet(other, originalOther);
-  useEffect(() => {
-    if (selectedNames.length === 0 || (unchanged && originalIds.length + originalOther.length > 0)) {
-      setOverride(null);
-      return;
+  function setAction(row: Row, action: Action) {
+    if (action === "replace") {
+      const fits = p.catalogParts.filter((c) => c.component === row.component);
+      // One fitting part: pick it. Several: leave the picker open. None: free text.
+      update(row.component, { action, part_id: fits.length === 1 ? fits[0].id : row.part_id, part_name: fits.length === 0 ? row.part_name : null });
+    } else {
+      update(row.component, { action, part_id: null, part_name: null });
     }
-    const ticketId = p.ticketId;
-    setOverride({
-      label: `Request parts from ${p.brandName} → Request Part`,
-      nextName: "Request Part",
-      summaryExtra: [{ label: "Parts requested", value: `${selectedNames.join(", ")} · for ${p.watchModel}` }],
-      run: () => requestPartsAction({ ticketId, partIds, other }),
-    });
-    return () => setOverride(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [partIds.join(","), other.join("|"), p.ticketId, p.brandName, p.watchModel, setOverride]);
+  }
 
-  const dis = !p.canEdit;
+  const sentParts = p.parts.filter((x) => x.sent_at);
+  const assessed = rows.filter((r) => r.conditions.length > 0 || r.action);
+  const replacing = rows.filter((r) => r.action === "replace");
 
   return (
     <div className="flex flex-col gap-8">
       <div className="flex items-baseline justify-between">
         <div>
           <h2 className="text-[22px]">Received &amp; Diagnostics</h2>
-          <p className="mt-1 text-[14.5px] text-text-2">Tick the box, tick the condition grid, add a note if needed. Need a part? Pick it below and the ticket hands to {p.brandName} to ship it.</p>
+          <p className="mt-1 text-[14.5px] text-text-2">
+            Tick the box, then go through the watch: note the condition of each part and decide what gets repaired or replaced. Replacements are checked against {p.brandName} stock next.
+          </p>
         </div>
         <span className="flex-none text-[12.5px] text-text-3" aria-live="polite">
           {status === "saving" || pending ? "Saving…" : status === "saved" ? "Saved" : status === "error" ? "Couldn't save" : ""}
@@ -134,7 +146,16 @@ export function ReceivedForm(p: Props) {
       </div>
 
       <label className="flex items-center gap-2.5 text-[15px]">
-        <input type="checkbox" checked={received} disabled={dis} onChange={(e) => toggleReceived(e.target.checked)} className="h-4 w-4 accent-[var(--pivot-accent)]" />
+        <input
+          type="checkbox"
+          checked={received}
+          disabled={dis}
+          onChange={(e) => {
+            setReceived(e.target.checked);
+            persist({ received: e.target.checked });
+          }}
+          className="h-4 w-4 accent-[var(--pivot-accent)]"
+        />
         <span>
           Watch received on the bench
           {received && receivedAt && <span className={hint}>· {formatDate(receivedAt)}</span>}
@@ -143,39 +164,100 @@ export function ReceivedForm(p: Props) {
 
       <div>
         <span className={label}>
-          Condition on arrival<span className={hint}>tick everything that applies · at least one</span>
+          Diagnosis<span className={hint}>condition on arrival, and what to do about it · at least one component</span>
         </span>
         <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[520px] border-separate border-spacing-0 text-[13.5px]">
+          <table className="w-full min-w-[720px] border-separate border-spacing-0 text-[13.5px]">
             <thead>
-              <tr>
-                <th className="w-[140px]" />
+              <tr className="text-text-3">
+                <th className="w-[130px] pb-2 text-left font-medium">Component</th>
                 {INTAKE_CONDITIONS.map((c) => (
-                  <th key={c} className="pb-2 text-center font-medium text-text-3">{c}</th>
+                  <th key={c} className="w-[92px] pb-2 text-center font-medium">{c}</th>
                 ))}
+                <th className="pb-2 pl-4 text-left font-medium">Work</th>
               </tr>
             </thead>
             <tbody>
-              {INTAKE_COMPONENTS.map((row) => (
-                <tr key={row} className="border-t border-border">
-                  <th scope="row" className="border-t border-border py-2 pr-3 text-left font-normal text-text-2">{row}</th>
-                  {INTAKE_CONDITIONS.map((col) => (
-                    <td key={col} className="border-t border-border py-2 text-center">
-                      <input
-                        type="checkbox"
-                        aria-label={`${row}: ${col}`}
-                        checked={isOn(row, col)}
-                        disabled={dis}
-                        onChange={() => toggleCell(row, col)}
-                        className="h-4 w-4 accent-[var(--pivot-accent)]"
-                      />
+              {rows.map((row) => {
+                const fits = p.catalogParts.filter((c) => c.component === row.component);
+                const partLocked = sentParts.find((x) => x.component === row.component);
+                return (
+                  <tr key={row.component}>
+                    <th scope="row" className="border-t border-border py-2 pr-3 text-left font-normal text-text-2">
+                      {COMPONENT_LABELS[row.component]}
+                    </th>
+                    {INTAKE_CONDITIONS.map((c) => (
+                      <td key={c} className="border-t border-border py-2 text-center">
+                        <input
+                          type="checkbox"
+                          aria-label={`${COMPONENT_LABELS[row.component]}: ${c}`}
+                          checked={row.conditions.includes(c)}
+                          disabled={dis}
+                          onChange={() => toggleCondition(row, c)}
+                          className="h-4 w-4 accent-[var(--pivot-accent)]"
+                        />
+                      </td>
+                    ))}
+                    <td className="border-t border-border py-2 pl-4">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {(["repair", "replace"] as const).map((a) => (
+                          <button
+                            key={a}
+                            type="button"
+                            disabled={dis || !!partLocked}
+                            aria-pressed={row.action === a}
+                            onClick={() => setAction(row, row.action === a ? null : a)}
+                            className={seg(row.action === a, dis || !!partLocked)}
+                          >
+                            {a === "repair" ? "Repair" : "Replace"}
+                          </button>
+                        ))}
+                        {row.action === "replace" && fits.length > 1 && (
+                          <select
+                            value={row.part_id ?? ""}
+                            disabled={dis}
+                            onChange={(e) => update(row.component, { part_id: e.target.value || null, part_name: null })}
+                            aria-label={`Which ${COMPONENT_LABELS[row.component]} part`}
+                            className="h-7 rounded-lg border border-border-strong bg-transparent px-2 text-[12.5px] text-text focus:border-accent focus:outline-none"
+                          >
+                            <option value="">Which part?</option>
+                            {fits.map((c) => (
+                              <option key={c.id} value={c.id}>{c.name} · {c.sku}</option>
+                            ))}
+                          </select>
+                        )}
+                        {row.action === "replace" && fits.length === 1 && (
+                          <span className="text-[12.5px] text-text-3">
+                            {fits[0].name} <span className="font-mono">{fits[0].sku}</span>
+                          </span>
+                        )}
+                        {row.action === "replace" && fits.length === 0 && (
+                          <input
+                            value={row.part_name ?? ""}
+                            disabled={dis}
+                            placeholder="Part name (not in catalog)"
+                            aria-label={`${COMPONENT_LABELS[row.component]} part name`}
+                            onChange={(e) => setRows((rs) => rs.map((r) => (r.component === row.component ? { ...r, part_name: e.target.value } : r)))}
+                            onBlur={(e) => update(row.component, { part_name: e.target.value.trim() || null })}
+                            className="h-7 w-48 rounded-lg border border-border-strong bg-transparent px-2 text-[12.5px] text-text placeholder:text-text-3 focus:border-accent focus:outline-none"
+                          />
+                        )}
+                        {partLocked && <span className="text-[12.5px] text-green">{partLocked.name} · already sent</span>}
+                      </div>
                     </td>
-                  ))}
-                </tr>
-              ))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
+        {assessed.length > 0 && (
+          <p className="mt-3 text-[13.5px] text-text-3">
+            {replacing.length > 0
+              ? `Replacing ${replacing.map((r) => COMPONENT_LABELS[r.component]).join(", ")} on the ${p.watchModel}. Continue checks ${p.brandName} stock for those parts.`
+              : "No replacements. Continue goes straight to In repair."}
+          </p>
+        )}
       </div>
 
       <div>
@@ -201,84 +283,12 @@ export function ReceivedForm(p: Props) {
           value={notes}
           disabled={dis}
           onChange={(e) => setNotes(e.target.value)}
-          onBlur={() => notes !== (p.notes ?? "") && persist({ received, grid, notes })}
+          onBlur={() => notes !== (p.notes ?? "") && persist({ notes })}
           className="min-h-[96px] w-full rounded-lg border border-border-strong bg-transparent px-3 py-2.5 text-[15px] leading-relaxed text-text placeholder:text-text-3 focus:border-accent focus:outline-none disabled:opacity-60"
         />
       </div>
 
-      <div>
-        <span className={label}>
-          Need a part from {p.brandName}?<span className={hint}>tap what you need · optional</span>
-        </span>
-        {p.catalogParts.length === 0 && (
-          <p className="mt-3 text-[13.5px] text-text-3">No catalog parts are linked to {p.watchModel} yet. Use “Something else” below.</p>
-        )}
-        <ul className="mt-3 divide-y divide-border border-y border-border">
-          {p.catalogParts.map((c) => (
-            <li key={c.id}>
-              <label className="flex items-center gap-3 py-2.5 text-[15px]">
-                <input type="checkbox" checked={partIds.includes(c.id)} disabled={dis} onChange={() => togglePart(c.id)} className="h-4 w-4 accent-[var(--pivot-accent)]" />
-                <span className="flex-1">{c.name}</span>
-                <span className="font-mono text-[13px] text-text-3">{c.sku}</span>
-              </label>
-            </li>
-          ))}
-          {other.map((name) => (
-            <li key={`other-${name}`}>
-              <label className="flex items-center gap-3 py-2.5 text-[15px]">
-                <input type="checkbox" checked disabled={dis} onChange={() => setOther((os) => os.filter((o) => o !== name))} className="h-4 w-4 accent-[var(--pivot-accent)]" />
-                <span className="flex-1">{name}</span>
-                <span className="text-[13px] text-text-3">not in catalog</span>
-              </label>
-            </li>
-          ))}
-          {sentParts.map((x) => (
-            <li key={x.id}>
-              <div className="flex items-center gap-3 py-2.5 text-[15px] text-text-3">
-                <input type="checkbox" checked disabled className="h-4 w-4 accent-[var(--pivot-accent)]" />
-                <span className="flex-1">{x.name}</span>
-                <span className="text-[13px] text-green">already sent</span>
-              </div>
-            </li>
-          ))}
-        </ul>
-        <div className="mt-3 flex items-center gap-2">
-          <input
-            value={otherDraft}
-            disabled={dis}
-            onChange={(e) => setOtherDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                addOther();
-              }
-            }}
-            placeholder="Something else…"
-            aria-label="Part not in the catalog"
-            className="h-9 w-64 rounded-lg border border-border-strong bg-transparent px-3 text-[14px] text-text placeholder:text-text-3 focus:border-accent focus:outline-none disabled:opacity-60"
-          />
-          <button type="button" disabled={dis || !otherDraft.trim()} onClick={addOther} className="h-9 rounded-lg border border-border-strong px-3 text-[13.5px] text-text-2 hover:border-accent-text hover:text-accent-text disabled:opacity-50">
-            Add
-          </button>
-        </div>
-        {selectedNames.length > 0 && (
-          <p className="mt-3 text-[13.5px] text-text-3">
-            {selectedNames.join(", ")} · for {p.watchModel}.{" "}
-            {unchanged && originalIds.length + originalOther.length > 0
-              ? "This request is already pending; Continue goes back to Request Part."
-              : "Use the button below to send the request."}
-          </p>
-        )}
-      </div>
-
       {error && <p className="text-[13px] text-red">{error}</p>}
-
     </div>
   );
-}
-
-function sameSet(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  const s = new Set(a.map((x) => x.toLowerCase()));
-  return b.every((x) => s.has(x.toLowerCase()));
 }

@@ -33,7 +33,7 @@ export const STAGE_DEFINITIONS: Record<Stage, StageDefinition> = {
     name: "Received & Diagnostics",
     publicName: "Watch received, diagnosis underway",
     owners: ["watchmaker"],
-    actionLabel: "No part needed · Continue",
+    actionLabel: "Continue",
   },
   request_part: {
     id: "request_part",

@@ -5,7 +5,6 @@ import { useState, useTransition } from "react";
 import { advanceTicket, reopenTicket, sendTicketBack, type MoveResult } from "../actions";
 import type { SummaryRow } from "../detail";
 import { ConfirmAdvanceDialog, ghostBtn as ghost, primaryBtn as primary } from "./confirm-advance-dialog";
-import { useStageAction } from "./stage-action-context";
 
 export type ActionBlockProps = {
   ticketId: string;
@@ -37,12 +36,10 @@ export function ActionBlock(p: ActionBlockProps) {
   const [overridePay, setOverridePay] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const { override, setOverride } = useStageAction();
-
-  const nextName = override?.nextName ?? p.nextName;
-  const actionLabel = override?.label ?? `${p.actionLabel ?? "Continue"} → ${p.nextName}`;
-  const email = override ? null : p.email;
-  const summary = override ? [...p.summary, ...override.summaryExtra] : p.summary;
+  const nextName = p.nextName;
+  const actionLabel = `${p.actionLabel ?? "Continue"} → ${p.nextName}`;
+  const email = p.email;
+  const summary = p.summary;
 
   const paymentOnly = p.missing.length === 1 && p.missing[0] === "payment received";
   const blocked = p.missing.length > 0 && !(paymentOnly && overridePay);
@@ -54,7 +51,6 @@ export function ActionBlock(p: ActionBlockProps) {
       if (!r.ok) setError(r.error);
       else {
         setOpen(false);
-        setOverride(null);
         router.refresh();
       }
     });
@@ -126,9 +122,7 @@ export function ActionBlock(p: ActionBlockProps) {
         confirmLabel={actionLabel}
         pending={pending}
         error={error}
-        onConfirm={() =>
-          run(() => (override ? override.run() : advanceTicket({ ticketId: p.ticketId, sendEmail, overridePayment: overridePay })))
-        }
+        onConfirm={() => run(() => advanceTicket({ ticketId: p.ticketId, sendEmail, overridePayment: overridePay }))}
       />
     </div>
   );

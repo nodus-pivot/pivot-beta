@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { blankTicket, NODUS, WITH_LABEL } from "./fixtures";
-import { advance, canActOn, missingFor, publicStageName, reopen, requestParts, sendBack, stagesFor } from "./index";
+import { advance, canActOn, missingFor, publicStageName, reopen, sendBack, stagesFor } from "./index";
 
 describe("stagesFor", () => {
   it("is the fixed six-stage path by default", () => {
@@ -35,10 +35,12 @@ describe("missingFor", () => {
     const t = blankTicket({ stage: "intake", customer_name: "", customer_email: null, watch_id: null, issue_description: " " });
     expect(missingFor(t, "brand_rep")).toEqual(["customer name", "customer email", "watch", "issue description"]);
   });
-  it("received needs the bench checkbox and one condition", () => {
-    expect(missingFor(blankTicket(), "watchmaker")).toEqual(["watch received on the bench", "at least one condition"]);
-    const ok = blankTicket({ watch_received_at: "2026-09-05", intake_components: [{ component: "Bezel", conditions: ["Scratches"] }] });
+  it("received needs the bench checkbox and one assessed component", () => {
+    expect(missingFor(blankTicket(), "watchmaker")).toEqual(["watch received on the bench", "at least one component assessed"]);
+    const ok = blankTicket({ watch_received_at: "2026-09-05", intake_components: [{ component: "bezel_insert", conditions: ["Scratches"] }] });
     expect(missingFor(ok, "watchmaker")).toEqual([]);
+    const planned = blankTicket({ watch_received_at: "2026-09-05", repair_categories: [{ component: "movement", action: "regulate" }] });
+    expect(missingFor(planned, "watchmaker")).toEqual([]);
   });
   it("every stage after intake needs an email on file", () => {
     expect(missingFor(blankTicket({ stage: "testing", customer_email: "" }), "watchmaker")).toContain("customer email");
@@ -106,7 +108,7 @@ describe("advance", () => {
   });
   it("refuses with the missing list when blocked", () => {
     expect(advance(blankTicket(), "watchmaker", NODUS)).toEqual({
-      ok: false, reason: "blocked", missing: ["watch received on the bench", "at least one condition"],
+      ok: false, reason: "blocked", missing: ["watch received on the bench", "at least one component assessed"],
     });
   });
   it("has nowhere to go from closed", () => {
@@ -119,9 +121,13 @@ describe("advance", () => {
 
 describe("the part-request loop", () => {
   it("received → request_part → in_repair", () => {
-    const t = blankTicket({ requested_parts: [{ name: "Crown", sent_at: null }] });
-    expect(requestParts(t, "watchmaker")).toMatchObject({ ok: true, to: "request_part", email: null });
-    expect(requestParts(blankTicket(), "watchmaker")).toMatchObject({ ok: false, reason: "blocked" });
+    // A Replace decision with a catalog part puts Request Part on the path; Continue goes there.
+    const t = blankTicket({
+      watch_received_at: "2026-09-05",
+      repair_categories: [{ component: "crown_tube", action: "replace" }],
+      requested_parts: [{ name: "Crown", sent_at: null }],
+    });
+    expect(advance(t, "watchmaker", NODUS)).toMatchObject({ ok: true, to: "request_part", email: null });
 
     const waiting = { ...t, stage: "request_part" as const };
     expect(advance(waiting, "brand_rep", NODUS)).toMatchObject({ ok: false, missing: ["1 part not sent"] });

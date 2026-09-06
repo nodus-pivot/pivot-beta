@@ -21,10 +21,11 @@ export async function CurrentStep({ t, role }: { t: TicketDetail; role: Role }) 
           issue={t.issue_description}
           receivedAt={t.watch_received_at}
           conditions={asConditions(t.intake_components)}
+          categories={asCategories(t.repair_categories)}
           notes={t.intake_notes}
           brandName={t.brand.name}
-          catalogParts={catalogParts.map((c) => ({ id: c.id, name: c.name, sku: c.sku }))}
-          pendingParts={t.parts.filter((x) => x.source === "brand").map((x) => ({ id: x.id, part_id: x.part_id, name: x.name, sent_at: x.sent_at }))}
+          catalogParts={catalogParts}
+          parts={t.parts.filter((x) => x.source === "brand").map((x) => ({ id: x.id, part_id: x.part_id, name: x.name, component: x.component, sent_at: x.sent_at }))}
         />
       );
     }

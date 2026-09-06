@@ -4,12 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/features/auth/queries";
 import { z } from "zod";
-import { COMPONENTS, INTAKE_COMPONENTS, INTAKE_CONDITIONS, advance, canActOn, reopen, requestParts, sendBack, type Refusal } from "@/features/pipeline";
+import { COMPONENTS, INTAKE_CONDITIONS, advance, canActOn, reopen, sendBack, type Refusal } from "@/features/pipeline";
 import type { Database } from "@/lib/supabase/database.types";
 import { getWorkspaceContext } from "@/features/workspaces/queries";
 import { createClient } from "@/lib/supabase/server";
 import { CreateTicketError, createTicket } from "./create";
-import { toPipelineTicket } from "./detail";
+import { asCategories, toPipelineTicket } from "./detail";
 import { getPartsForWatch, getTicketDetail } from "./queries";
 import { applyTransition } from "./transition";
 import { createTicketSchema, intakeFormToInput } from "./schema";
@@ -159,21 +159,30 @@ export async function addComment(_prev: { error?: string }, fd: FormData): Promi
 
 /* ---------------------------------------------------------------- received & diagnostics (1c) */
 
-const conditionSchema = z.object({
-  component: z.enum(INTAKE_COMPONENTS),
-  conditions: z.array(z.enum(INTAKE_CONDITIONS)).min(1),
+const diagnosisRowSchema = z.object({
+  component: z.enum(COMPONENTS),
+  conditions: z.array(z.enum(INTAKE_CONDITIONS)),
+  action: z.enum(["repair", "replace"]).nullable(),
+  /** For Replace: the catalog part, or a free-text name when the catalog has none. */
+  part_id: z.uuid().nullable(),
+  part_name: z.string().trim().max(120).nullable(),
 });
 
 const receivedInput = z.object({
   ticketId: z.uuid(),
   received: z.boolean(),
-  conditions: z.array(conditionSchema).max(INTAKE_COMPONENTS.length),
+  rows: z.array(diagnosisRowSchema).max(COMPONENTS.length),
   notes: z.string().trim().max(5000).nullable(),
 });
 
 export type SaveResult = { ok: true } | { ok: false; error: string };
 
-/** Autosave for the Received & Diagnostics fields. Whole-state, so the last save wins. */
+/**
+ * Autosave for the diagnosis. Whole-state, so the last save wins. Writes:
+ *  - intake_components: rows with conditions
+ *  - repair_categories: rows with an action (the same rows In repair edits)
+ *  - ticket_parts (brand, unsent): one row per Replace pick, kept in sync
+ */
 export async function saveReceived(raw: z.input<typeof receivedInput>): Promise<SaveResult> {
   const parsed = receivedInput.safeParse(raw);
   if (!parsed.success) return { ok: false, error: "Some of that didn't look right; reload and try again." };
@@ -183,88 +192,57 @@ export async function saveReceived(raw: z.input<typeof receivedInput>): Promise<
   if (!canActOn(user.profile.role, "received")) return { ok: false, error: "Only the watchmaker edits this step." };
 
   const supabase = await createClient();
-  const { data: t } = await supabase.from("tickets").select("stage, watch_received_at").eq("id", input.ticketId).maybeSingle();
+  const { data: t } = await supabase.from("tickets").select("stage, watch_id, watch_received_at, repair_categories").eq("id", input.ticketId).maybeSingle();
   if (!t) return { ok: false, error: "Ticket not found." };
   if (t.stage !== "received") return { ok: false, error: "This ticket has moved on; reload the page." };
+
+  // Keep variants already chosen for a component (In repair may have set one before a send-back).
+  const existing = new Map(asCategories(t.repair_categories).map((c) => [c.component, c]));
+  const intake = input.rows.filter((r) => r.conditions.length > 0).map((r) => ({ component: r.component, conditions: r.conditions }));
+  const categories = input.rows
+    .filter((r) => r.action)
+    .map((r) => ({ component: r.component, action: r.action!, ...(existing.get(r.component)?.variant ? { variant: existing.get(r.component)!.variant } : {}) }));
 
   const receivedAt = input.received ? (t.watch_received_at ?? new Date().toISOString()) : null;
   const { error } = await supabase
     .from("tickets")
-    .update({ watch_received_at: receivedAt, intake_components: input.conditions, intake_notes: input.notes })
+    .update({ watch_received_at: receivedAt, intake_components: intake, repair_categories: categories, intake_notes: input.notes })
     .eq("id", input.ticketId);
   if (error) return { ok: false, error: error.message };
+
+  // Sync the parts demand: unsent brand rows mirror the Replace picks.
+  const { data: rows } = await supabase.from("ticket_parts").select("id, part_id, name, component, sent_at").eq("ticket_id", input.ticketId).eq("source", "brand");
+  const unsent = (rows ?? []).filter((r) => !r.sent_at);
+  const wanted = input.rows.filter((r) => r.action === "replace" && (r.part_id || r.part_name));
+  const keep = new Set<string>();
+  const toInsert: Database["public"]["Tables"]["ticket_parts"]["Insert"][] = [];
+  const catalog = wanted.some((w) => w.part_id) ? await getPartsForWatch(t.watch_id) : [];
+  const now = new Date().toISOString();
+  for (const w of wanted) {
+    const match = unsent.find((r) => r.component === w.component && (w.part_id ? r.part_id === w.part_id : !r.part_id && r.name.toLowerCase() === (w.part_name ?? "").toLowerCase()));
+    if (match) {
+      keep.add(match.id);
+      continue;
+    }
+    if (w.part_id) {
+      const c = catalog.find((x) => x.id === w.part_id);
+      if (!c) return { ok: false, error: "One of those parts doesn't fit this watch. Reload and try again." };
+      toInsert.push({ ticket_id: input.ticketId, part_id: c.id, component: c.component as Database["public"]["Enums"]["component"], name: c.name, sku: c.sku, source: "brand", requested_at: now, requested_by: user.id });
+    } else {
+      toInsert.push({ ticket_id: input.ticketId, component: w.component, name: w.part_name!, source: "brand", requested_at: now, requested_by: user.id });
+    }
+  }
+  const stale = unsent.filter((r) => !keep.has(r.id)).map((r) => r.id);
+  if (stale.length) await supabase.from("ticket_parts").delete().in("id", stale);
+  if (toInsert.length) {
+    const { error: e2 } = await supabase.from("ticket_parts").insert(toInsert);
+    if (e2) return { ok: false, error: e2.message };
+  }
 
   if (input.received && !t.watch_received_at) {
     await supabase.from("ticket_events").insert({ ticket_id: input.ticketId, type: "watch_received", actor_id: user.id, body: "marked the watch received on the bench" });
   }
   revalidatePath(`/service-center/tickets/${input.ticketId}`);
-  return { ok: true };
-}
-
-const requestPartsInput = z.object({
-  ticketId: z.uuid(),
-  /** Catalog parts that fit the watch. */
-  partIds: z.array(z.uuid()).max(50),
-  /** Free-text parts that aren't in the catalog. */
-  other: z.array(z.string().trim().min(1).max(120)).max(20),
-});
-
-/**
- * "Request parts": makes the pending request equal to the selection, then
- * moves the ticket to Request Part. Rows already marked sent are kept.
- */
-export async function requestPartsAction(raw: z.input<typeof requestPartsInput>): Promise<MoveResult> {
-  const parsed = requestPartsInput.safeParse(raw);
-  if (!parsed.success) return { ok: false, error: "Pick at least one part." };
-  const { ticketId, partIds, other } = parsed.data;
-  if (partIds.length + other.length === 0) return { ok: false, error: "Pick at least one part." };
-  const ctx = await loadForMove(ticketId);
-  if (!ctx.ok) return { ok: false, error: ctx.error };
-  if (ctx.detail.stage !== "received") return { ok: false, error: "Parts are requested from Received & Diagnostics." };
-  if (!canActOn(ctx.user.profile.role, "received")) return { ok: false, error: "Only the watchmaker requests parts." };
-
-  const supabase = await createClient();
-  const pending = ctx.detail.parts.filter((x) => x.source === "brand" && !x.sent_at);
-  const otherNames = new Set(other.map((n) => n.toLowerCase()));
-
-  // Drop unsent rows that are no longer selected.
-  const stale = pending.filter((x) => (x.part_id ? !partIds.includes(x.part_id) : !otherNames.has(x.name.toLowerCase())));
-  if (stale.length) await supabase.from("ticket_parts").delete().in("id", stale.map((x) => x.id));
-
-  // Add newly selected catalog parts, validated against the watch's fit list.
-  const havePart = new Set(pending.map((x) => x.part_id).filter(Boolean));
-  const newIds = partIds.filter((id) => !havePart.has(id));
-  const now = new Date().toISOString();
-  if (newIds.length) {
-    const catalog = await getPartsForWatch(ctx.detail.watch_id);
-    const rows = newIds.flatMap((id) => {
-      const c = catalog.find((x) => x.id === id);
-      return c ? [{ ticket_id: ticketId, part_id: c.id, component: c.component as Database["public"]["Enums"]["component"], name: c.name, sku: c.sku, source: "brand", requested_at: now, requested_by: ctx.user.id }] : [];
-    });
-    if (rows.length !== newIds.length) return { ok: false, error: "One of those parts doesn't fit this watch. Reload and try again." };
-    const { error } = await supabase.from("ticket_parts").insert(rows);
-    if (error) return { ok: false, error: error.message };
-  }
-  const haveName = new Set(pending.filter((x) => !x.part_id).map((x) => x.name.toLowerCase()));
-  const newOther = other.filter((n) => !haveName.has(n.toLowerCase()));
-  if (newOther.length) {
-    const { error } = await supabase.from("ticket_parts").insert(newOther.map((name) => ({ ticket_id: ticketId, name, source: "brand", requested_at: now, requested_by: ctx.user.id })));
-    if (error) return { ok: false, error: error.message };
-  }
-
-  const fresh = await getTicketDetail(ticketId);
-  if (!fresh) return { ok: false, error: "Ticket not found." };
-  const requested = fresh.parts.filter((x) => x.source === "brand" && !x.sent_at).map((x) => x.name);
-  await supabase.from("ticket_events").insert({
-    ticket_id: ticketId,
-    type: "parts_requested",
-    actor_id: ctx.user.id,
-    body: `requested parts from the brand · ${requested.join(", ")}`,
-  });
-  const result = requestParts(toPipelineTicket(fresh), ctx.user.profile.role);
-  if (!result.ok) return { ok: false, error: refusalMessage(result) };
-  await applyTransition(supabase, ticketId, ctx.user.id, result, false);
-  revalidatePath("/service-center", "layout");
   return { ok: true };
 }
 

@@ -98,13 +98,16 @@ export function stageSummaryRows(stage: Stage, t: TicketDetail): SummaryRow[] {
       return [{ label: "Prepaid label", value: t.shipments.some((s) => s.direction === "inbound") ? "Emailed" : "—" }];
     case "received": {
       const conds = asConditions(t.intake_components);
+      const cats = asCategories(t.repair_categories);
+      const repair = cats.filter((c) => c.action === "repair").map((c) => componentLabel(c.component));
+      const replace = cats.filter((c) => c.action === "replace").map((c) => componentLabel(c.component));
+      const parts = t.parts.filter((p) => p.source === "brand").map((p) => p.name);
       return [
         { label: "On the bench", value: t.watch_received_at ? formatDate(t.watch_received_at) : "—" },
-        { label: "Condition on arrival", value: conds.length ? conds.map((c) => `${c.component} (${c.conditions.join(", ")})`).join("; ") : "—" },
+        { label: "Condition on arrival", value: conds.length ? conds.map((c) => `${componentLabel(c.component)} (${c.conditions.join(", ")})`).join("; ") : "—" },
+        ...(repair.length ? [{ label: "To repair", value: repair.join(", ") }] : []),
+        ...(replace.length ? [{ label: "To replace", value: `${replace.join(", ")}${parts.length ? ` · parts: ${parts.join(", ")}` : ""}` }] : []),
         ...(t.intake_notes ? [{ label: "Intake notes", value: t.intake_notes }] : []),
-        ...(t.parts.some((p) => p.source === "brand")
-          ? [{ label: "Parts requested", value: t.parts.filter((p) => p.source === "brand").map((p) => p.name).join(", ") }]
-          : []),
       ];
     }
     case "request_part": {

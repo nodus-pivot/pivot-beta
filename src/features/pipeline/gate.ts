@@ -38,7 +38,7 @@ export function missingFor(ticket: PipelineTicket, role: Role, opts: GateOptions
 
     case "received":
       if (!ticket.watch_received_at) missing.push("watch received on the bench");
-      if (ticket.intake_components.length === 0) missing.push("at least one condition");
+      if (ticket.intake_components.length === 0 && ticket.repair_categories.length === 0) missing.push("at least one component assessed");
       break;
 
     case "request_part": {
