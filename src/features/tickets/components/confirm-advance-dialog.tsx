@@ -1,6 +1,6 @@
 "use client";
 
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { SummaryRow } from "../detail";
 
 export type ConfirmAdvanceDialogProps = {
@@ -26,7 +26,7 @@ export const ghostBtn = "text-[13.5px] text-text-3 hover:text-text disabled:opac
 export function ConfirmAdvanceDialog(p: ConfirmAdvanceDialogProps) {
   return (
     <Dialog open={p.open} onOpenChange={p.onOpenChange}>
-      <DialogContent showCloseButton={false} className="max-w-[520px] rounded-[14px] border border-border bg-surface p-6 text-text ring-0 shadow-[0_0_0_1px_var(--pivot-border-strong),0_16px_40px_rgba(0,0,0,.55)] sm:max-w-[520px]">
+      <DialogContent showCloseButton={false} className="max-w-[520px] gap-5 rounded-[14px] border border-border bg-surface p-6 text-text ring-0 shadow-[0_0_0_1px_var(--pivot-border-strong),0_16px_40px_rgba(0,0,0,.55)] sm:max-w-[520px]">
         <DialogHeader className="text-left">
           <DialogTitle className="text-[18px] font-medium">Confirm before advancing</DialogTitle>
           <DialogDescription className="text-[14px] text-text-2">
@@ -48,14 +48,14 @@ export function ConfirmAdvanceDialog(p: ConfirmAdvanceDialogProps) {
             <span className="text-text-3">· logged only</span>
           </label>
         )}
-        <DialogFooter className="mt-2 flex-row justify-end gap-3">
+        <div className="mt-2 flex items-center justify-end gap-4 border-t border-border pt-4">
           <button type="button" onClick={() => p.onOpenChange(false)} className={ghostBtn}>
             Go back
           </button>
           <button type="button" disabled={p.pending} onClick={p.onConfirm} className={primaryBtn}>
             {p.pending ? "Moving…" : p.confirmLabel}
           </button>
-        </DialogFooter>
+        </div>
         {p.error && <p className="text-[13px] text-red">{p.error}</p>}
       </DialogContent>
     </Dialog>
