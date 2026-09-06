@@ -73,10 +73,8 @@ export async function CurrentStep({ t, role }: { t: TicketDetail; role: Role }) 
         />
       );
     }
-    case "testing": {
-      const c = asChecks(t.testing_checks);
-      return <TestingForm ticketId={t.id} canEdit={canEdit} complete={c.timekeeping && c.water_resistance && c.visual} notes={t.testing_notes} />;
-    }
+    case "testing":
+      return <TestingForm ticketId={t.id} canEdit={canEdit} checks={asChecks(t.testing_checks)} notes={t.testing_notes} />;
     default: {
       const name = STAGE_DEFINITIONS[t.stage].name;
       return (

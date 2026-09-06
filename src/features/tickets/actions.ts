@@ -428,11 +428,11 @@ export async function saveInRepair(raw: z.input<typeof repairInput>): Promise<Sa
 
 const testingInput = z.object({
   ticketId: z.uuid(),
-  complete: z.boolean(),
+  checks: z.object({ timekeeping: z.boolean(), water_resistance: z.boolean(), visual: z.boolean() }),
   notes: z.string().trim().max(5000).nullable(),
 });
 
-/** Autosave for Testing. One checkbox covers the three checks the gate reads. */
+/** Autosave for Testing: the three checks the gate reads, plus notes. */
 export async function saveTesting(raw: z.input<typeof testingInput>): Promise<SaveResult> {
   const parsed = testingInput.safeParse(raw);
   if (!parsed.success) return { ok: false, error: "Reload and try again." };
@@ -448,10 +448,11 @@ export async function saveTesting(raw: z.input<typeof testingInput>): Promise<Sa
     const c = t.testing_checks as Record<string, unknown> | null;
     return !!c && c.timekeeping === true && c.water_resistance === true && c.visual === true;
   })();
-  const checks = { timekeeping: input.complete, water_resistance: input.complete, visual: input.complete };
+  const checks = input.checks;
+  const nowComplete = checks.timekeeping && checks.water_resistance && checks.visual;
   const { error } = await supabase.from("tickets").update({ testing_checks: checks, testing_notes: input.notes }).eq("id", input.ticketId);
   if (error) return { ok: false, error: error.message };
-  if (input.complete && !wasComplete) {
+  if (nowComplete && !wasComplete) {
     await supabase.from("ticket_events").insert({ ticket_id: input.ticketId, type: "testing_complete", actor_id: user.id, body: "passed testing · timekeeping, water resistance, visual inspection" });
   }
   revalidatePath(`/service-center/tickets/${input.ticketId}`);

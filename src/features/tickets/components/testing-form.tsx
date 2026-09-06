@@ -3,36 +3,41 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Plus } from "@phosphor-icons/react";
+import type { TestingChecks } from "@/features/pipeline";
 import { saveTesting } from "../actions";
 
 type Props = {
   ticketId: string;
   canEdit: boolean;
-  complete: boolean;
+  checks: TestingChecks;
   notes: string | null;
 };
 
 const label = "block text-[13.5px] font-medium text-text-2";
 const hint = "ml-2 text-[13px] font-normal text-text-3";
 
-const COVERED = ["Timekeeping", "Water resistance", "Visual inspection"] as const;
+const CHECKS: { key: keyof TestingChecks; label: string; body: string }[] = [
+  { key: "timekeeping", label: "Timekeeping", body: "Rate and amplitude within spec on the timegrapher." },
+  { key: "water_resistance", label: "Water resistance", body: "Pressure test passed to the model's rating." },
+  { key: "visual", label: "Visual inspection", body: "Dial, hands, crystal and case clean; no marks from the work." },
+];
 
-/** Testing (design 1f): one checkbox card covering the three checks, optional notes. Autosaves. */
+/** Testing (design 1f, revised): one checkbox per check, optional notes. Autosaves. */
 export function TestingForm(p: Props) {
   const router = useRouter();
-  const [complete, setComplete] = useState(p.complete);
+  const [checks, setChecks] = useState<TestingChecks>(p.checks);
   const [notes, setNotes] = useState(p.notes ?? "");
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const dis = !p.canEdit;
 
-  function persist(next: { complete?: boolean; notes?: string }) {
-    const s = { complete, notes, ...next };
+  function persist(next: { checks?: TestingChecks; notes?: string }) {
+    const s = { checks, notes, ...next };
     setStatus("saving");
     setError(null);
     start(async () => {
-      const r = await saveTesting({ ticketId: p.ticketId, complete: s.complete, notes: s.notes.trim() || null });
+      const r = await saveTesting({ ticketId: p.ticketId, checks: s.checks, notes: s.notes.trim() || null });
       if (r.ok) {
         setStatus("saved");
         router.refresh();
@@ -48,36 +53,39 @@ export function TestingForm(p: Props) {
       <div className="flex items-baseline justify-between">
         <div>
           <h2 className="text-[22px]">Testing</h2>
-          <p className="mt-1 text-[14.5px] text-text-2">Run the watch through the checks. One box covers all three; the customer hears “Repair complete” when this advances.</p>
+          <p className="mt-1 text-[14.5px] text-text-2">Run the watch through the three checks and tick each as it passes. The customer hears “Repair complete” when this advances.</p>
         </div>
         <span className="flex-none text-[12.5px] text-text-3" aria-live="polite">
           {status === "saving" || pending ? "Saving…" : status === "saved" ? "Saved" : status === "error" ? "Couldn't save" : ""}
         </span>
       </div>
 
-      <label className={`block cursor-pointer rounded-[14px] border px-5 py-4 transition-colors ${complete ? "border-accent bg-accent-900/40" : "border-border bg-surface hover:border-border-strong"} ${dis ? "cursor-default opacity-70" : ""}`}>
-        <span className="flex items-center gap-3 text-[16px] font-medium">
-          <input
-            type="checkbox"
-            checked={complete}
-            disabled={dis}
-            onChange={(e) => {
-              setComplete(e.target.checked);
-              persist({ complete: e.target.checked });
-            }}
-            className="h-4 w-4 accent-[var(--pivot-accent)]"
-          />
-          Testing complete
-        </span>
-        <ul className="mt-2 flex flex-wrap gap-x-5 gap-y-1 pl-7 text-[13.5px] text-text-3">
-          {COVERED.map((c) => (
-            <li key={c} className={complete ? "text-green" : ""}>
-              {complete ? "✓ " : "· "}
-              {c}
+      <ul className="divide-y divide-border overflow-hidden rounded-[14px] border border-border bg-surface">
+        {CHECKS.map((c) => {
+          const on = checks[c.key];
+          return (
+            <li key={c.key}>
+              <label className={`flex cursor-pointer items-start gap-3 px-5 py-4 transition-colors ${on ? "bg-accent-900/30" : "hover:bg-[color-mix(in_srgb,var(--pivot-text)_4%,transparent)]"} ${dis ? "cursor-default opacity-70" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={on}
+                  disabled={dis}
+                  onChange={(e) => {
+                    const next = { ...checks, [c.key]: e.target.checked };
+                    setChecks(next);
+                    persist({ checks: next });
+                  }}
+                  className="mt-1 h-4 w-4 accent-[var(--pivot-accent)]"
+                />
+                <span>
+                  <span className={`block text-[15px] font-medium ${on ? "text-green" : ""}`}>{c.label}</span>
+                  <span className="block text-[13.5px] text-text-3">{c.body}</span>
+                </span>
+              </label>
             </li>
-          ))}
-        </ul>
-      </label>
+          );
+        })}
+      </ul>
 
       <div>
         <span className={label}>
