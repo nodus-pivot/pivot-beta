@@ -13,6 +13,8 @@ import {
 } from "@/features/pipeline";
 import { formatDate } from "@/lib/format";
 import { requestPartsAction, saveReceived } from "../actions";
+import type { SummaryRow } from "../detail";
+import { ConfirmAdvanceDialog } from "./confirm-advance-dialog";
 
 type Props = {
   ticketId: string;
@@ -24,6 +26,8 @@ type Props = {
   notes: string | null;
   /** Name of the brand rep the request goes to, for the button label. */
   repName: string;
+  /** What's recorded at this stage so far, for the confirm dialog. */
+  summary: SummaryRow[];
 };
 
 type Status = "idle" | "saving" | "saved" | "error";
@@ -45,6 +49,7 @@ export function ReceivedForm(p: Props) {
   const [parts, setParts] = useState<Component[]>([]);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, start] = useTransition();
   const [requesting, startRequest] = useTransition();
 
@@ -94,9 +99,14 @@ export function ReceivedForm(p: Props) {
     startRequest(async () => {
       const r = await requestPartsAction({ ticketId: p.ticketId, components: parts });
       if (!r.ok) setError(r.error);
-      else router.refresh();
+      else {
+        setConfirmOpen(false);
+        router.refresh();
+      }
     });
   }
+
+  const partsLine = parts.map((c) => COMPONENT_LABELS[c]).join(", ");
 
   const dis = !p.canEdit;
 
@@ -205,7 +215,7 @@ export function ReceivedForm(p: Props) {
           <button
             type="button"
             disabled={dis || parts.length === 0 || requesting}
-            onClick={sendRequest}
+            onClick={() => setConfirmOpen(true)}
             className="inline-flex h-10 items-center rounded-lg border border-accent px-4 text-[14.5px] text-accent-text transition-colors hover:bg-accent-900 disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
           >
             {requesting ? "Sending…" : `Send request to ${p.repName} → Request Part`}
@@ -219,6 +229,18 @@ export function ReceivedForm(p: Props) {
       </div>
 
       {error && <p className="text-[13px] text-red">{error}</p>}
+
+      <ConfirmAdvanceDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        currentName="Received & Diagnostics"
+        nextName="Request Part"
+        summary={[...p.summary, { label: "Parts requested", value: `${partsLine} · for ${p.watchModel}` }]}
+        confirmLabel={`Send request to ${p.repName} → Request Part`}
+        pending={requesting}
+        error={error}
+        onConfirm={sendRequest}
+      />
     </div>
   );
 }

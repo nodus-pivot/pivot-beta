@@ -2,9 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { advanceTicket, reopenTicket, sendTicketBack, type MoveResult } from "../actions";
 import type { SummaryRow } from "../detail";
+import { ConfirmAdvanceDialog, ghostBtn as ghost, primaryBtn as primary } from "./confirm-advance-dialog";
 
 export type ActionBlockProps = {
   ticketId: string;
@@ -27,10 +27,6 @@ export type ActionBlockProps = {
   /** Admins may pass the payment gate. */
   canOverridePayment: boolean;
 };
-
-const primary =
-  "inline-flex h-10 items-center justify-center rounded-lg border border-accent px-4 text-[14.5px] text-accent-text transition-colors hover:bg-accent-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent";
-const ghost = "text-[13.5px] text-text-3 hover:text-text disabled:opacity-50";
 
 /** The primary action, its "N left" list, send-back, and the confirm-before-advancing dialog (design 2p). */
 export function ActionBlock(p: ActionBlockProps) {
@@ -112,45 +108,18 @@ export function ActionBlock(p: ActionBlockProps) {
       )}
       {error && <p className="mt-3 text-[13px] text-red">{error}</p>}
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent showCloseButton={false} className="max-w-[520px] rounded-[14px] border border-border bg-surface p-6 text-text ring-0 shadow-[0_0_0_1px_var(--pivot-border-strong),0_16px_40px_rgba(0,0,0,.55)] sm:max-w-[520px]">
-          <DialogHeader className="text-left">
-            <DialogTitle className="text-[18px] font-medium">Confirm before advancing</DialogTitle>
-            <DialogDescription className="text-[14px] text-text-2">
-              Leaving {p.currentName} → {p.nextName}. Check this is accurate{p.email ? "; it's what the customer email will say." : "."}
-            </DialogDescription>
-          </DialogHeader>
-          <dl className="grid grid-cols-[140px_1fr] gap-x-5 gap-y-2 text-[13.5px]">
-            {p.summary.map((r) => (
-              <div key={r.label} className="contents">
-                <dt className="text-text-3">{r.label}</dt>
-                <dd className="text-text-2">{r.value}</dd>
-              </div>
-            ))}
-          </dl>
-          {p.email && (
-            <label className="flex items-center gap-2.5 text-[13.5px] text-text-2">
-              <input type="checkbox" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} className="h-4 w-4 accent-[var(--pivot-accent)]" />
-              Send “{p.email.name}”{p.email.to ? ` to ${p.email.to}` : ""}
-              <span className="text-text-3">· logged only</span>
-            </label>
-          )}
-          <DialogFooter className="mt-2 flex-row justify-end gap-3">
-            <button type="button" onClick={() => setOpen(false)} className={ghost}>
-              Go back
-            </button>
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => run(() => advanceTicket({ ticketId: p.ticketId, sendEmail, overridePayment: override }))}
-              className={primary}
-            >
-              {pending ? "Moving…" : `${p.actionLabel ?? "Continue"} → ${p.nextName}`}
-            </button>
-          </DialogFooter>
-          {error && <p className="text-[13px] text-red">{error}</p>}
-        </DialogContent>
-      </Dialog>
+      <ConfirmAdvanceDialog
+        open={open}
+        onOpenChange={setOpen}
+        currentName={p.currentName}
+        nextName={p.nextName ?? ""}
+        summary={p.summary}
+        email={p.email ? { name: p.email.name, to: p.email.to, checked: sendEmail, onChange: setSendEmail } : undefined}
+        confirmLabel={`${p.actionLabel ?? "Continue"} → ${p.nextName}`}
+        pending={pending}
+        error={error}
+        onConfirm={() => run(() => advanceTicket({ ticketId: p.ticketId, sendEmail, overridePayment: override }))}
+      />
     </div>
   );
 }

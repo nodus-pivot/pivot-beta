@@ -1,5 +1,5 @@
 import { STAGE_DEFINITIONS, canActOn, isLiveStage, type Role } from "@/features/pipeline";
-import { asConditions, type TicketDetail } from "../detail";
+import { asConditions, stageSummaryRows, type TicketDetail } from "../detail";
 import { ReceivedForm } from "./received-form";
 
 /** Picks the current stage's form. Stages without a form yet show a placeholder. */
@@ -19,6 +19,7 @@ export function CurrentStep({ t, role }: { t: TicketDetail; role: Role }) {
           conditions={asConditions(t.intake_components)}
           notes={t.intake_notes}
           repName="the brand rep"
+          summary={stageSummaryRows("received", t)}
         />
       );
     default: {
