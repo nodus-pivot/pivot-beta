@@ -52,3 +52,6 @@ export function intakeFormToInput(fd: FormData): unknown {
     send_email: fd.get("send_email") === "on",
   };
 }
+
+/** Carriers offered for manual tracking (design 1g). ShipStation adds its own later. */
+export const CARRIERS = ["usps", "ups", "fedex", "dhl", "other"] as const;

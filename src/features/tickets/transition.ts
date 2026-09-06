@@ -25,4 +25,8 @@ export async function applyTransition(db: Db, ticketId: string, actorId: string,
   if (tr.to === "request_part") {
     await db.from("tickets").update({ parts_requested_at: new Date().toISOString() }).eq("id", ticketId);
   }
+  if (tr.from === "shipped_back" && tr.to === "closed") {
+    // "Mark as shipped": the outbound shipment leaves now. Delivery comes from the carrier webhook later.
+    await db.from("shipments").update({ shipped_at: new Date().toISOString() }).eq("ticket_id", ticketId).eq("direction", "outbound").is("shipped_at", null);
+  }
 }

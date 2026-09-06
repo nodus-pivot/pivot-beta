@@ -12,7 +12,7 @@ import { CreateTicketError, createTicket } from "./create";
 import { asCategories, toPipelineTicket } from "./detail";
 import { getPartsForWatch, getTicketDetail } from "./queries";
 import { applyTransition } from "./transition";
-import { createTicketSchema, intakeFormToInput } from "./schema";
+import { CARRIERS, createTicketSchema, intakeFormToInput } from "./schema";
 
 export type IntakeState = {
   error?: string;
@@ -454,6 +454,65 @@ export async function saveTesting(raw: z.input<typeof testingInput>): Promise<Sa
   if (error) return { ok: false, error: error.message };
   if (nowComplete && !wasComplete) {
     await supabase.from("ticket_events").insert({ ticket_id: input.ticketId, type: "testing_complete", actor_id: user.id, body: "passed testing · timekeeping, water resistance, visual inspection" });
+  }
+  revalidatePath(`/service-center/tickets/${input.ticketId}`);
+  return { ok: true };
+}
+
+/* ---------------------------------------------------------------- return home (1g) */
+
+const returnHomeInput = z.object({
+  ticketId: z.uuid(),
+  signature_required: z.boolean(),
+  in_person_handoff: z.boolean(),
+  /** Manual tracking; null clears it. Label purchase (ShipStation) comes later. */
+  tracking: z.object({ carrier: z.enum(CARRIERS), number: z.string().trim().min(1).max(100) }).nullable(),
+});
+
+/**
+ * Autosave for Return home. Keeps at most one manual outbound shipment row,
+ * which is what the gate reads as "has tracking".
+ */
+export async function saveReturnHome(raw: z.input<typeof returnHomeInput>): Promise<SaveResult> {
+  const parsed = returnHomeInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Reload and try again." };
+  const input = parsed.data;
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "You're signed out." };
+  if (!canActOn(user.profile.role, "shipped_back")) return { ok: false, error: "Only the watchmaker edits this step." };
+  const supabase = await createClient();
+  const { data: t } = await supabase.from("tickets").select("stage, in_person_handoff").eq("id", input.ticketId).maybeSingle();
+  if (!t) return { ok: false, error: "Ticket not found." };
+  if (t.stage !== "shipped_back") return { ok: false, error: "This ticket isn't at Return home; reload the page." };
+
+  const { error } = await supabase
+    .from("tickets")
+    .update({ signature_required: input.signature_required, in_person_handoff: input.in_person_handoff })
+    .eq("id", input.ticketId);
+  if (error) return { ok: false, error: error.message };
+
+  const { data: existing } = await supabase
+    .from("shipments")
+    .select("id, tracking_number, carrier_code")
+    .eq("ticket_id", input.ticketId)
+    .eq("direction", "outbound")
+    .eq("source", "manual")
+    .maybeSingle();
+
+  if (input.tracking) {
+    const changed = !existing || existing.tracking_number !== input.tracking.number || existing.carrier_code !== input.tracking.carrier;
+    const row = { ticket_id: input.ticketId, direction: "outbound", source: "manual", carrier_code: input.tracking.carrier, tracking_number: input.tracking.number, signature_required: input.signature_required };
+    const res = existing ? await supabase.from("shipments").update(row).eq("id", existing.id) : await supabase.from("shipments").insert(row);
+    if (res.error) return { ok: false, error: res.error.message };
+    if (changed) {
+      await supabase.from("ticket_events").insert({ ticket_id: input.ticketId, type: "tracking_entered", actor_id: user.id, body: `entered tracking · ${input.tracking.carrier.toUpperCase()} ${input.tracking.number}` });
+    }
+  } else if (existing) {
+    await supabase.from("shipments").delete().eq("id", existing.id);
+  }
+
+  if (input.in_person_handoff && !t.in_person_handoff) {
+    await supabase.from("ticket_events").insert({ ticket_id: input.ticketId, type: "handoff", actor_id: user.id, body: "marked the watch handed off in person" });
   }
   revalidatePath(`/service-center/tickets/${input.ticketId}`);
   return { ok: true };

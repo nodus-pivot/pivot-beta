@@ -1,9 +1,11 @@
 import { STAGE_DEFINITIONS, canActOn, isLiveStage, type Role } from "@/features/pipeline";
 import { asCategories, asChecks, asConditions, type TicketDetail } from "../detail";
+import type { ReturnAddress } from "../schema";
 import { getPartsForWatch, getPartsStock } from "../queries";
 import { InRepairForm } from "./in-repair-form";
 import { ReceivedForm } from "./received-form";
 import { RequestPartForm } from "./request-part-form";
+import { ReturnHomeForm } from "./return-home-form";
 import { TestingForm } from "./testing-form";
 
 /** Picks the current stage's form. Stages without a form yet show a placeholder. */
@@ -75,6 +77,22 @@ export async function CurrentStep({ t, role }: { t: TicketDetail; role: Role }) 
     }
     case "testing":
       return <TestingForm ticketId={t.id} canEdit={canEdit} checks={asChecks(t.testing_checks)} notes={t.testing_notes} />;
+    case "shipped_back": {
+      const out = t.shipments.find((x) => x.direction === "outbound" && x.source === "manual");
+      return (
+        <ReturnHomeForm
+          ticketId={t.id}
+          canEdit={canEdit}
+          customerName={t.customer_name}
+          address={(t.return_address as ReturnAddress | null) ?? null}
+          requiresPayment={t.requires_payment}
+          paymentStatus={t.payment_status as "none" | "invoiced" | "paid"}
+          signatureRequired={t.signature_required}
+          inPersonHandoff={t.in_person_handoff}
+          tracking={out ? { carrier: out.carrier_code, number: out.tracking_number } : null}
+        />
+      );
+    }
     default: {
       const name = STAGE_DEFINITIONS[t.stage].name;
       return (
