@@ -31,3 +31,7 @@ export const VARIANTS: Partial<Record<Component, readonly string[]>> = {
 };
 
 export const ACTION_LABELS = { repair: "Repair", replace: "Replace", regulate: "Regulate" } as const;
+
+/** The 1c condition-on-arrival grid: rows × columns, any number ticked per row. */
+export const INTAKE_COMPONENTS = ["Case", "Caseback", "Bezel", "Bracelet", "Clasp", "Crystal", "Crown/Stem", "Dial", "Handset"] as const;
+export const INTAKE_CONDITIONS = ["Lightly worn", "Scratches", "Discolored", "Cracked"] as const;

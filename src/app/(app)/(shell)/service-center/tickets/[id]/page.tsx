@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/features/auth/queries";
 import { SIGN_IN_PATH } from "@/features/auth/redirect";
-import { STAGE_DEFINITIONS, isLiveStage } from "@/features/pipeline";
+import { CurrentStep } from "@/features/tickets/components/current-step";
 import { TicketFrame } from "@/features/tickets/components/ticket-frame";
 import { getTicketDetail } from "@/features/tickets/queries";
 import { getWorkspaceContext } from "@/features/workspaces/queries";
@@ -27,20 +27,7 @@ export default async function TicketPage({ params }: Params) {
 
   return (
     <TicketFrame t={t} role={user.profile.role} settings={settings}>
-      <CurrentStepPlaceholder stage={t.stage} />
+      <CurrentStep t={t} role={user.profile.role} />
     </TicketFrame>
-  );
-}
-
-/** Stand-in until each stage's form is built (steps 6–11). */
-function CurrentStepPlaceholder({ stage }: { stage: string }) {
-  const name = isLiveStage(stage) ? STAGE_DEFINITIONS[stage].name : stage;
-  return (
-    <div>
-      <h2 className="text-[22px]">{name}</h2>
-      <p className="mt-2 rounded-lg border border-dashed border-border px-4 py-6 text-center text-[14px] text-text-3">
-        The {name} form is the next screen to be built. The action below already checks this stage&rsquo;s requirements.
-      </p>
-    </div>
   );
 }

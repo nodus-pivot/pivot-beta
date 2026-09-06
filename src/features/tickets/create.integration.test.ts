@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { afterAll, describe, expect, it } from "vitest";
 import type { Database } from "@/lib/supabase/database.types";
-import { advance, sendBack } from "@/features/pipeline";
+import { advance, requestParts, sendBack } from "@/features/pipeline";
 import { createTicket } from "./create";
 import { toPipelineTicket } from "./detail";
 import { applyTransition } from "./transition";
@@ -115,6 +115,31 @@ describe.skipIf(!enabled)("createTicket (integration)", () => {
     const after = await load();
     expect(after.stage).toBe("received");
     expect(after.events.map((e) => e.type)).toEqual(["created", "stage_changed", "email_skipped", "sent_back", "stage_changed", "email_logged"]);
+  });
+
+  it("requesting parts branches into Request Part and stamps parts_requested_at", async () => {
+    await signIn();
+    const t = await createTicket(
+      db,
+      { workspaceId: NODUS, ticketPrefix: "NW", actorId: userId },
+      {
+        customer_name: "Parts Test", customer_email: "parts@example.com", customer_phone: null,
+        brand_id: NODUS_BRAND, watch_id: SECTOR_DEEP, watch_serial: null,
+        issue_description: "parts test", return_address: { line1: null, line2: null, city: null, state: null, postal_code: null, country: null },
+        requires_payment: false, priority: false, send_email: false,
+      },
+    );
+    created.push(t.id);
+    await db.from("ticket_parts").insert({ ticket_id: t.id, component: "crown_tube", name: "Crown/Tube", source: "brand", requested_at: new Date().toISOString(), requested_by: userId });
+    const { data: parts } = await db.from("ticket_parts").select("*").eq("ticket_id", t.id);
+    const { data: row } = await db.from("tickets").select("*").eq("id", t.id).single();
+    const pt = toPipelineTicket({ ...row!, watch: { model: "", reference: null, warranty_months: null }, brand: { name: "" }, parts: parts ?? [], shipments: [], events: [] });
+    const r = requestParts(pt, "workspace_admin");
+    expect(r).toMatchObject({ ok: true, to: "request_part" });
+    if (r.ok) await applyTransition(db, t.id, userId, r, false);
+    const { data: after } = await db.from("tickets").select("stage, parts_requested_at").eq("id", t.id).single();
+    expect(after?.stage).toBe("request_part");
+    expect(after?.parts_requested_at).not.toBeNull();
   });
 
   it("refuses a watch that isn't sold under the chosen brand", async () => {

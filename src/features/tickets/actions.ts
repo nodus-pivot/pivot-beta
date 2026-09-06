@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/features/auth/queries";
 import { z } from "zod";
-import { advance, canActOn, reopen, sendBack, type Refusal } from "@/features/pipeline";
+import { COMPONENTS, INTAKE_COMPONENTS, INTAKE_CONDITIONS, advance, canActOn, componentLabel, reopen, requestParts, sendBack, type Refusal } from "@/features/pipeline";
 import { getWorkspaceContext } from "@/features/workspaces/queries";
 import { createClient } from "@/lib/supabase/server";
 import { CreateTicketError, createTicket } from "./create";
@@ -154,4 +154,89 @@ export async function addComment(_prev: { error?: string }, fd: FormData): Promi
   if (error) return { error: error.message };
   revalidatePath(`/service-center/tickets/${parsed.data.ticketId}`);
   return {};
+}
+
+/* ---------------------------------------------------------------- received & diagnostics (1c) */
+
+const conditionSchema = z.object({
+  component: z.enum(INTAKE_COMPONENTS),
+  conditions: z.array(z.enum(INTAKE_CONDITIONS)).min(1),
+});
+
+const receivedInput = z.object({
+  ticketId: z.uuid(),
+  received: z.boolean(),
+  conditions: z.array(conditionSchema).max(INTAKE_COMPONENTS.length),
+  notes: z.string().trim().max(5000).nullable(),
+});
+
+export type SaveResult = { ok: true } | { ok: false; error: string };
+
+/** Autosave for the Received & Diagnostics fields. Whole-state, so the last save wins. */
+export async function saveReceived(raw: z.input<typeof receivedInput>): Promise<SaveResult> {
+  const parsed = receivedInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Some of that didn't look right; reload and try again." };
+  const input = parsed.data;
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "You're signed out." };
+  if (!canActOn(user.profile.role, "received")) return { ok: false, error: "Only the watchmaker edits this step." };
+
+  const supabase = await createClient();
+  const { data: t } = await supabase.from("tickets").select("stage, watch_received_at").eq("id", input.ticketId).maybeSingle();
+  if (!t) return { ok: false, error: "Ticket not found." };
+  if (t.stage !== "received") return { ok: false, error: "This ticket has moved on; reload the page." };
+
+  const receivedAt = input.received ? (t.watch_received_at ?? new Date().toISOString()) : null;
+  const { error } = await supabase
+    .from("tickets")
+    .update({ watch_received_at: receivedAt, intake_components: input.conditions, intake_notes: input.notes })
+    .eq("id", input.ticketId);
+  if (error) return { ok: false, error: error.message };
+
+  if (input.received && !t.watch_received_at) {
+    await supabase.from("ticket_events").insert({ ticket_id: input.ticketId, type: "watch_received", actor_id: user.id, body: "marked the watch received on the bench" });
+  }
+  revalidatePath(`/service-center/tickets/${input.ticketId}`);
+  return { ok: true };
+}
+
+const requestPartsInput = z.object({ ticketId: z.uuid(), components: z.array(z.enum(COMPONENTS)).min(1) });
+
+/** "Send request to Wes": records the parts and moves the ticket to Request Part. */
+export async function requestPartsAction(raw: z.input<typeof requestPartsInput>): Promise<MoveResult> {
+  const parsed = requestPartsInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Pick at least one part." };
+  const { ticketId, components } = parsed.data;
+  const ctx = await loadForMove(ticketId);
+  if (!ctx.ok) return { ok: false, error: ctx.error };
+  if (ctx.detail.stage !== "received") return { ok: false, error: "Parts are requested from Received & Diagnostics." };
+  if (!canActOn(ctx.user.profile.role, "received")) return { ok: false, error: "Only the watchmaker requests parts." };
+
+  const supabase = await createClient();
+  const now = new Date().toISOString();
+  const { error } = await supabase.from("ticket_parts").insert(
+    components.map((c) => ({
+      ticket_id: ticketId,
+      component: c,
+      name: componentLabel(c),
+      source: "brand",
+      requested_at: now,
+      requested_by: ctx.user.id,
+    })),
+  );
+  if (error) return { ok: false, error: error.message };
+  await supabase.from("ticket_events").insert({
+    ticket_id: ticketId,
+    type: "parts_requested",
+    actor_id: ctx.user.id,
+    body: `requested parts from the brand · ${components.map(componentLabel).join(", ")}`,
+  });
+
+  const fresh = await getTicketDetail(ticketId);
+  if (!fresh) return { ok: false, error: "Ticket not found." };
+  const result = requestParts(toPipelineTicket(fresh), ctx.user.profile.role);
+  if (!result.ok) return { ok: false, error: refusalMessage(result) };
+  await applyTransition(supabase, ticketId, ctx.user.id, result, false);
+  revalidatePath("/service-center", "layout");
+  return { ok: true };
 }
