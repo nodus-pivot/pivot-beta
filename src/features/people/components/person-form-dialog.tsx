@@ -6,7 +6,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Field, fieldClass } from "@/features/ops/components/action-dialog";
 import { ghostBtn, primaryBtn } from "@/features/tickets/components/confirm-advance-dialog";
 import { createPerson, type PeopleResult } from "../actions";
-import { GrantPicker, type GrantOptions } from "./grant-picker";
+import type { GrantOptions } from "./grant-picker";
+import { GrantRows } from "./grant-rows";
 import { TemporaryPassword } from "./temporary-password";
 
 /** Add a person: name, email, first grant. Stays open afterwards to show the temporary password once. */
@@ -45,7 +46,7 @@ function AddPersonForm({ options, onClose }: { options: GrantOptions; onClose: (
           <DialogHeader className="text-left">
             <DialogTitle className="text-[18px] font-medium">{done ? "Account created" : "Add person"}</DialogTitle>
             <DialogDescription className="text-[14px] text-text-2">
-              {done ? "Hand over the password below. You can add more grants from the list." : "Creates their sign-in and gives them a first role. Password sign-in only, for now."}
+              {done ? "Hand over the password below. You can add more grants from the list." : "Creates their sign-in and gives them their roles. Password sign-in only, for now."}
             </DialogDescription>
           </DialogHeader>
           {done ? (
@@ -65,7 +66,7 @@ function AddPersonForm({ options, onClose }: { options: GrantOptions; onClose: (
                   <input id="np_email" name="email" type="email" required className={fieldClass} aria-invalid={!!errors.email || undefined} />
                 </Field>
               </div>
-              <GrantPicker options={options} prefix="grant_" error={errors.grant} />
+              <GrantRows options={options} error={errors.grants} />
               {state && !state.ok && <p className="text-[13px] text-red">{state.error}</p>}
               <div className="mt-1 flex items-center justify-end gap-4 border-t border-border pt-4">
                 <button type="button" onClick={onClose} className={ghostBtn}>Cancel</button>

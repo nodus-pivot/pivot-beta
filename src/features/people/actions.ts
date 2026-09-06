@@ -56,8 +56,15 @@ async function personGrants(supabase: Awaited<ReturnType<typeof createClient>>, 
 const personInput = z.object({
   display_name: z.string().trim().min(1, "Enter their name.").max(120),
   email: z.string().trim().toLowerCase().pipe(z.email("Enter a valid email address.")),
-  grant: grantSchema,
+  grants: z.array(grantSchema).min(1, "Give them at least one role.").max(20),
 });
+
+/** Rows come in as g0_role, g0_brand_id, g1_role, … in order. */
+function grantsFromForm(fd: FormData) {
+  const out = [];
+  for (let i = 0; fd.has(`g${i}_role`); i++) out.push(grantFromForm(fd, `g${i}_`));
+  return out;
+}
 
 /**
  * Add a person: auth account (service role), profile row (service role: no
@@ -65,19 +72,27 @@ const personInput = z.object({
  * right). Returns the temporary password to hand over directly.
  */
 export async function createPerson(_prev: PeopleResult | null, fd: FormData): Promise<PeopleResult> {
-  const parsed = personInput.safeParse({ display_name: fd.get("display_name") ?? "", email: fd.get("email") ?? "", grant: grantFromForm(fd, "grant_") });
+  const parsed = personInput.safeParse({ display_name: fd.get("display_name") ?? "", email: fd.get("email") ?? "", grants: grantsFromForm(fd) });
   if (!parsed.success) {
     const fieldErrors: Record<string, string> = {};
     for (const i of parsed.error.issues) {
       const k = i.path[0];
-      if (typeof k === "string" && !fieldErrors[k]) fieldErrors[k] = k === "grant" ? "Pick a role and where it applies." : i.message;
+      if (typeof k === "string" && !fieldErrors[k]) fieldErrors[k] = k === "grants" ? "Pick a role and where it applies on every row." : i.message;
     }
     return { ok: false, error: "Fix the highlighted fields.", fieldErrors };
   }
   const ctx = await context();
   if (!ctx.ok) return ctx;
-  const grant = toGrant(parsed.data.grant);
-  if (!canManageGrant(ctx.user.realGrants, grant, ctx.brandWorkspace)) return { ok: false, error: "You can't grant that role.", fieldErrors: { grant: "Not within your workspaces." } };
+  // Dedupe identical rows, then check every one against the caller's right to grant it.
+  const seen = new Set<string>();
+  const grants = parsed.data.grants.map(toGrant).filter((g) => {
+    const key = `${g.role}|${g.workspace_id ?? ""}|${g.brand_id ?? ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const refused = grants.find((g) => !canManageGrant(ctx.user.realGrants, g, ctx.brandWorkspace));
+  if (refused) return { ok: false, error: "You can't grant one of those roles.", fieldErrors: { grants: "One row is outside your workspaces." } };
 
   const admin = createAdminClient();
   const password = temporaryPassword();
@@ -96,8 +111,8 @@ export async function createPerson(_prev: PeopleResult | null, fd: FormData): Pr
     await admin.auth.admin.deleteUser(created.user.id);
     return { ok: false, error: e2.message };
   }
-  const { error: e3 } = await ctx.supabase.from("memberships").insert({ user_id: created.user.id, ...grant, created_by: ctx.user.id });
-  if (e3) return { ok: false, error: `Account created, but the grant failed: ${e3.message}` };
+  const { error: e3 } = await ctx.supabase.from("memberships").insert(grants.map((g) => ({ user_id: created.user.id, ...g, created_by: ctx.user.id })));
+  if (e3) return { ok: false, error: `Account created, but the grants failed: ${e3.message}` };
   revalidatePath("/ops/users");
   return { ok: true, temporaryPassword: password };
 }
