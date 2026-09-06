@@ -118,8 +118,10 @@ export function stageSummaryRows(stage: Stage, t: TicketDetail): SummaryRow[] {
       const cats = asCategories(t.repair_categories);
       return [
         { label: "Work performed", value: cats.length ? cats.map((c) => `${c.action ? ACTION_LABELS[c.action] : "?"} — ${componentLabel(c.component)}${c.variant ? ` (${c.variant})` : ""}`).join("; ") : "—" },
+        ...(t.parts.length ? [{ label: "Parts used", value: t.parts.map((p) => `${p.name}${p.source === "brand" ? " (from brand)" : " (bench stock)"}`).join("; ") }] : []),
         ...(t.solution_notes ? [{ label: "Solution notes", value: t.solution_notes }] : []),
         { label: "Time spent", value: formatMinutes(t.time_spent_minutes) },
+        ...(t.coverage ? [{ label: "Coverage", value: t.coverage === "paid" ? "Paid" : "Warranty" }] : []),
         { label: "Repair complete", value: t.repair_complete ? "Yes" : "No" },
       ];
     }

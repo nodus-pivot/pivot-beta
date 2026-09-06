@@ -1,6 +1,7 @@
 import { STAGE_DEFINITIONS, canActOn, isLiveStage, type Role } from "@/features/pipeline";
-import { asConditions, type TicketDetail } from "../detail";
+import { asCategories, asConditions, type TicketDetail } from "../detail";
 import { getPartsForWatch, getPartsStock } from "../queries";
+import { InRepairForm } from "./in-repair-form";
 import { ReceivedForm } from "./received-form";
 import { RequestPartForm } from "./request-part-form";
 
@@ -47,6 +48,23 @@ export async function CurrentStep({ t, role }: { t: TicketDetail; role: Role }) 
           requestedAt={t.parts_requested_at}
           snoozedUntil={t.parts_reminder_snoozed_until}
           shipTo={null}
+        />
+      );
+    }
+    case "in_repair": {
+      const catalogParts = await getPartsForWatch(t.watch_id);
+      return (
+        <InRepairForm
+          ticketId={t.id}
+          canEdit={canEdit}
+          categories={asCategories(t.repair_categories)}
+          parts={t.parts.map((x) => ({ id: x.id, name: x.name, sku: x.sku, source: x.source as "brand" | "bench_stock", sent_at: x.sent_at }))}
+          catalogParts={catalogParts.map((c) => ({ id: c.id, name: c.name, sku: c.sku }))}
+          solutionNotes={t.solution_notes}
+          timeSpentMinutes={t.time_spent_minutes}
+          coverage={t.coverage as "warranty" | "paid" | null}
+          repairComplete={t.repair_complete}
+          requiresPayment={t.requires_payment}
         />
       );
     }

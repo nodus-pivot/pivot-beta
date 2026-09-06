@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/features/auth/queries";
 import { z } from "zod";
-import { INTAKE_COMPONENTS, INTAKE_CONDITIONS, advance, canActOn, reopen, requestParts, sendBack, type Refusal } from "@/features/pipeline";
+import { COMPONENTS, INTAKE_COMPONENTS, INTAKE_CONDITIONS, advance, canActOn, reopen, requestParts, sendBack, type Refusal } from "@/features/pipeline";
 import type { Database } from "@/lib/supabase/database.types";
 import { getWorkspaceContext } from "@/features/workspaces/queries";
 import { createClient } from "@/lib/supabase/server";
@@ -343,5 +343,99 @@ export async function pauseReminders(raw: z.input<typeof pauseInput>): Promise<S
     payload: { until, days, reason },
   });
   revalidatePath(`/service-center/tickets/${ticketId}`);
+  return { ok: true };
+}
+
+/* ---------------------------------------------------------------- in repair (1e) */
+
+async function loadForRepairEdit(ticketId: string) {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false as const, error: "You're signed out." };
+  if (!canActOn(user.profile.role, "in_repair")) return { ok: false as const, error: "Only the watchmaker edits this step." };
+  const supabase = await createClient();
+  const { data: t } = await supabase.from("tickets").select("stage, watch_id, repair_complete").eq("id", ticketId).maybeSingle();
+  if (!t) return { ok: false as const, error: "Ticket not found." };
+  if (t.stage !== "in_repair") return { ok: false as const, error: "This ticket isn't in repair; reload the page." };
+  return { ok: true as const, user, supabase, ticket: t };
+}
+
+const categorySchema = z.object({
+  component: z.enum(COMPONENTS),
+  action: z.enum(["repair", "replace", "regulate"]).optional(),
+  variant: z.string().trim().max(40).optional(),
+});
+
+const repairInput = z.object({
+  ticketId: z.uuid(),
+  categories: z.array(categorySchema).max(COMPONENTS.length),
+  solution_notes: z.string().trim().max(5000).nullable(),
+  time_spent_minutes: z.number().int().min(0).max(100_000).nullable(),
+  coverage: z.enum(["warranty", "paid"]).nullable(),
+  repair_complete: z.boolean(),
+});
+
+/** Autosave for the In repair fields. Whole-state, so the last save wins. */
+export async function saveInRepair(raw: z.input<typeof repairInput>): Promise<SaveResult> {
+  const parsed = repairInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Some of that didn't look right; reload and try again." };
+  const input = parsed.data;
+  const ctx = await loadForRepairEdit(input.ticketId);
+  if (!ctx.ok) return ctx;
+  const { error } = await ctx.supabase
+    .from("tickets")
+    .update({
+      repair_categories: input.categories,
+      solution_notes: input.solution_notes,
+      time_spent_minutes: input.time_spent_minutes,
+      coverage: input.coverage,
+      repair_complete: input.repair_complete,
+    })
+    .eq("id", input.ticketId);
+  if (error) return { ok: false, error: error.message };
+  if (input.repair_complete && !ctx.ticket.repair_complete) {
+    await ctx.supabase.from("ticket_events").insert({ ticket_id: input.ticketId, type: "repair_complete", actor_id: ctx.user.id, body: "marked the repair complete" });
+  }
+  revalidatePath(`/service-center/tickets/${input.ticketId}`);
+  return { ok: true };
+}
+
+const benchPartInput = z.object({
+  ticketId: z.uuid(),
+  /** A catalog part that fits the watch, or a free-text name. */
+  partId: z.uuid().optional(),
+  name: z.string().trim().min(1).max(120).optional(),
+});
+
+/** "Add a part…": a part from the bench's own stock, used on this repair. Never touches Nodus stock. */
+export async function addBenchPart(raw: z.input<typeof benchPartInput>): Promise<SaveResult & { id?: string }> {
+  const parsed = benchPartInput.safeParse(raw);
+  if (!parsed.success || (!parsed.data.partId && !parsed.data.name)) return { ok: false, error: "Pick a part or type a name." };
+  const ctx = await loadForRepairEdit(parsed.data.ticketId);
+  if (!ctx.ok) return ctx;
+  let row: Database["public"]["Tables"]["ticket_parts"]["Insert"];
+  if (parsed.data.partId) {
+    const c = (await getPartsForWatch(ctx.ticket.watch_id)).find((x) => x.id === parsed.data.partId);
+    if (!c) return { ok: false, error: "That part doesn't fit this watch." };
+    row = { ticket_id: parsed.data.ticketId, part_id: c.id, component: c.component as Database["public"]["Enums"]["component"], name: c.name, sku: c.sku, source: "bench_stock", used_at: new Date().toISOString() };
+  } else {
+    row = { ticket_id: parsed.data.ticketId, name: parsed.data.name!, source: "bench_stock", used_at: new Date().toISOString() };
+  }
+  const { data, error } = await ctx.supabase.from("ticket_parts").insert(row).select("id").single();
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/service-center/tickets/${parsed.data.ticketId}`);
+  return { ok: true, id: data.id };
+}
+
+const removePartInput = z.object({ ticketId: z.uuid(), rowId: z.uuid() });
+
+/** Remove a bench-stock part from the repair. Brand-shipped parts can't be removed here. */
+export async function removeBenchPart(raw: z.input<typeof removePartInput>): Promise<SaveResult> {
+  const parsed = removePartInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Reload and try again." };
+  const ctx = await loadForRepairEdit(parsed.data.ticketId);
+  if (!ctx.ok) return ctx;
+  const { error } = await ctx.supabase.from("ticket_parts").delete().eq("id", parsed.data.rowId).eq("ticket_id", parsed.data.ticketId).eq("source", "bench_stock");
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/service-center/tickets/${parsed.data.ticketId}`);
   return { ok: true };
 }
