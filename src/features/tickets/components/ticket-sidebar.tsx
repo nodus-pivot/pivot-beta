@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMemo, useState } from "react";
-import { CaretDoubleLeft, CaretDoubleRight, CaretRight, MagnifyingGlass, Plus } from "@phosphor-icons/react";
+import { CaretDoubleLeft, CaretDoubleRight, MagnifyingGlass, Plus } from "@phosphor-icons/react";
 import { LIVE_STAGES, STAGE_DEFINITIONS, type Stage } from "@/features/pipeline";
 import { relativeAge } from "@/lib/labels";
 import type { TicketListItem } from "../queries";
@@ -36,10 +36,7 @@ export function TicketSidebar({ tickets, closed, benchOnly, canCreate }: Props) 
       .filter((g) => g.items.length > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tickets, q]);
-  const closedShown = closed.filter(matches);
-  // Searching opens the closed group so a hit there is visible.
-  const [closedOpen, setClosedOpen] = useState(false);
-  const showClosed = closedOpen || (!!q && closedShown.length > 0);
+
 
   const heading = benchOnly ? "My watches" : "All tickets";
 
@@ -114,28 +111,11 @@ export function TicketSidebar({ tickets, closed, benchOnly, canCreate }: Props) 
         ))}
 
         {closed.length > 0 && (
-          <section className="mt-4 border-t border-border pt-2">
-            <button
-              type="button"
-              onClick={() => setClosedOpen((v) => !v)}
-              aria-expanded={showClosed}
-              className="flex w-full items-center gap-2 px-4 pb-1 pt-2 text-[11.5px] font-medium uppercase tracking-[0.06em] text-text-3 hover:text-text"
-            >
-              <CaretRight size={12} className={`transition-transform ${showClosed ? "rotate-90" : ""}`} />
-              Closed
-              <span className="ml-auto rounded-full bg-surface-2 px-1.5 text-[11px] normal-case tracking-normal text-text-2">{closedShown.length}</span>
-            </button>
-            {showClosed && (
-              <ul>
-                {closedShown.map((t) => (
-                  <li key={t.id}>
-                    <Row t={t} pathname={pathname} />
-                  </li>
-                ))}
-                {closedShown.length === 0 && <li className="px-4 py-2 text-[13px] text-text-3">No closed tickets match.</li>}
-              </ul>
-            )}
-          </section>
+          <div className="mt-4 border-t border-border px-4 pt-3">
+            <Link href="/service-center?view=closed" className="text-[12.5px] text-text-3 hover:text-text">
+              Closed tickets · {closed.length} recent →
+            </Link>
+          </div>
         )}
       </nav>
     </aside>

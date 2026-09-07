@@ -158,3 +158,57 @@ export async function getPartsStock(partIds: string[]): Promise<Record<string, P
   for (const p of parts ?? []) out[p.id] = { qty: qty.get(p.id) ?? 0, reorder_at: p.reorder_at };
   return out;
 }
+
+/* ---------------------------------------------------------------- dashboard */
+
+export type DashboardTicket = {
+  id: string;
+  ticket_number: string;
+  customer_name: string | null;
+  stage: Stage;
+  priority: boolean;
+  coverage: "warranty" | "paid" | null;
+  requires_payment: boolean;
+  created_at: string;
+  updated_at: string;
+  watch_received_at: string | null;
+  estimated_done_at: string | null;
+  closed_at: string | null;
+  pending_address: boolean;
+  brand_id: string;
+  brand_name: string;
+  watch_model: string;
+  /** Brand-supplied parts on the ticket: name and whether it has shipped. */
+  parts: { name: string; sent: boolean }[];
+};
+
+const DASHBOARD_SELECT =
+  "id, ticket_number, customer_name, stage, priority, coverage, requires_payment, created_at, updated_at, watch_received_at, estimated_done_at, closed_at, pending_return_address, brand_id, brands(name), watches(model), ticket_parts(name, source, sent_at)";
+
+/** Every ticket in the workspace for the dashboard, open or closed. RLS narrows brand roles to their brands. */
+export async function listDashboardTickets(workspaceId: string, view: "open" | "closed"): Promise<DashboardTicket[]> {
+  const supabase = await createClient();
+  let q = supabase.from("tickets").select(DASHBOARD_SELECT).eq("workspace_id", workspaceId);
+  q = view === "open" ? q.neq("stage", "closed").order("updated_at", { ascending: false }) : q.eq("stage", "closed").order("closed_at", { ascending: false }).limit(200);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []).map((t) => ({
+    id: t.id,
+    ticket_number: t.ticket_number,
+    customer_name: t.customer_name,
+    stage: t.stage as Stage,
+    priority: t.priority,
+    coverage: t.coverage as "warranty" | "paid" | null,
+    requires_payment: t.requires_payment,
+    created_at: t.created_at,
+    updated_at: t.updated_at,
+    watch_received_at: t.watch_received_at,
+    estimated_done_at: t.estimated_done_at,
+    closed_at: t.closed_at,
+    pending_address: !!t.pending_return_address,
+    brand_id: t.brand_id,
+    brand_name: t.brands?.name ?? "",
+    watch_model: t.watches?.model ?? "",
+    parts: t.ticket_parts.filter((p) => p.source === "brand").map((p) => ({ name: p.name, sent: !!p.sent_at })),
+  }));
+}
