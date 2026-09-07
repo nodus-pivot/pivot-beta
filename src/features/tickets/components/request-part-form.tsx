@@ -153,7 +153,7 @@ export function RequestPartForm(p: Props) {
                 ))}
               </>
             ) : (
-              <p className="text-text-3">Bench address not set yet. It will come from Settings → Workspaces.</p>
+              <p className="text-text-3">Bench address not set yet. An owner or admin adds it under Ops › Workspace.</p>
             )}
           </div>
         </div>
