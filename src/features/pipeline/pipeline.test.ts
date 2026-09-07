@@ -8,11 +8,13 @@ describe("stagesFor", () => {
       "intake", "received", "in_repair", "testing", "shipped_back", "closed",
     ]);
   });
-  it("inserts Request Part after Received once a part is requested", () => {
-    const t = blankTicket({ requested_parts: [{ name: "Crown", sent_at: null }] });
-    expect(stagesFor(t, NODUS)).toEqual([
-      "intake", "received", "request_part", "in_repair", "testing", "shipped_back", "closed",
-    ]);
+  it("shows Waiting for parts only for tickets that parked there", () => {
+    const needsPart = blankTicket({ requested_parts: [{ name: "Crown", sent_at: null, in_stock: true }] });
+    expect(stagesFor(needsPart, NODUS)).not.toContain("request_part");
+    const parked = blankTicket({ stage: "request_part" });
+    expect(stagesFor(parked, NODUS)).toEqual(["intake", "received", "request_part", "in_repair", "testing", "shipped_back", "closed"]);
+    const visited = blankTicket({ stage: "in_repair", visited_request_part: true });
+    expect(stagesFor(visited, NODUS)).toContain("request_part");
   });
   it("shows Send Return Label when the workspace enables it or the ticket went through it", () => {
     expect(stagesFor(blankTicket(), WITH_LABEL)[1]).toBe("send_return_label");
@@ -56,21 +58,7 @@ describe("missingFor", () => {
   it("every stage after intake needs an email on file", () => {
     expect(missingFor(blankTicket({ stage: "testing", customer_email: "" }))).toContain("customer email");
   });
-  it("request part parks the ticket while a needed part is out of stock", () => {
-    const t = blankTicket({
-      stage: "request_part",
-      requested_parts: [{ name: "Crown", sent_at: null, in_stock: false }, { name: "Insert", sent_at: null, in_stock: true }, { name: "Custom dial", sent_at: null, in_stock: null }],
-    });
-    expect(missingFor(t)).toEqual(["Crown out of stock", "3 parts not sent"]);
-  });
-  it("request part counts unsent parts", () => {
-    const t = blankTicket({
-      stage: "request_part",
-      requested_parts: [{ name: "Crown", sent_at: null }, { name: "Tube", sent_at: null }, { name: "Gasket", sent_at: "2026-09-05" }],
-    });
-    expect(missingFor(t)).toEqual(["2 parts not sent"]);
-  });
-  it("in repair needs completion, components, actions, and variants for replaced movements or inserts", () => {
+      it("in repair needs completion, components, actions, and variants for replaced movements or inserts", () => {
     const t = blankTicket({
       stage: "in_repair",
       repair_categories: [
@@ -90,6 +78,14 @@ describe("missingFor", () => {
   it("testing needs all three checks", () => {
     const t = blankTicket({ stage: "testing", testing_checks: { timekeeping: true, water_resistance: true, visual: false } });
     expect(missingFor(t)).toEqual(["testing complete"]);
+  });
+  it("waiting for parts holds the ticket only while a needed part is out of stock", () => {
+    const t = blankTicket({
+      stage: "request_part",
+      requested_parts: [{ name: "Crown", sent_at: null, in_stock: false }, { name: "Insert", sent_at: null, in_stock: true }, { name: "Custom dial", sent_at: null, in_stock: null }],
+    });
+    expect(missingFor(t)).toEqual(["Crown out of stock"]);
+    expect(missingFor({ ...t, requested_parts: t.requested_parts.map((p) => ({ ...p, in_stock: p.in_stock === false ? true : p.in_stock })) })).toEqual([]);
   });
   it("return home needs payment when required, and tracking or an in-person handoff", () => {
     const t = blankTicket({ stage: "shipped_back", requires_payment: true, payment_status: "invoiced" });
@@ -142,26 +138,32 @@ describe("advance", () => {
   });
 });
 
-describe("the part-request loop", () => {
-  it("received → request_part → in_repair", () => {
-    // A Replace decision with a catalog part puts Request Part on the path; Continue goes there.
+describe("the parts branch", () => {
+  it("Continue from Received goes to In repair when every needed part is in stock", () => {
     const t = blankTicket({
       watch_received_at: "2026-09-05",
       repair_categories: [{ component: "crown_tube", action: "replace" }],
-      requested_parts: [{ name: "Crown", sent_at: null }],
+      requested_parts: [{ name: "Crown", sent_at: null, in_stock: true }],
+    });
+    expect(advance(t, WATCHMAKER, SCOPE, NODUS)).toMatchObject({ ok: true, to: "in_repair", email: null });
+  });
+  it("Continue from Received parks the ticket in Waiting for parts when something is out of stock", () => {
+    const t = blankTicket({
+      watch_received_at: "2026-09-05",
+      repair_categories: [{ component: "dial", action: "replace" }],
+      requested_parts: [{ name: "Dial", sent_at: null, in_stock: false }],
     });
     expect(advance(t, WATCHMAKER, SCOPE, NODUS)).toMatchObject({ ok: true, to: "request_part", email: null });
-
     const waiting = { ...t, stage: "request_part" as const };
-    expect(advance(waiting, REP, SCOPE, NODUS)).toMatchObject({ ok: false, missing: ["1 part not sent"] });
-    const sent = { ...waiting, requested_parts: [{ name: "Crown", sent_at: "2026-09-06" }] };
-    expect(advance(sent, REP, SCOPE, NODUS)).toMatchObject({ ok: true, to: "in_repair", email: null });
+    expect(advance(waiting, WATCHMAKER, SCOPE, NODUS)).toMatchObject({ ok: false, missing: ["Dial out of stock"] });
+    const arrived = { ...waiting, requested_parts: [{ name: "Dial", sent_at: null, in_stock: true }] };
+    expect(advance(arrived, WATCHMAKER, SCOPE, NODUS)).toMatchObject({ ok: true, to: "in_repair", email: null });
   });
 });
 
 describe("sendBack and reopen", () => {
-  it("steps back along the visible path, through Request Part when it exists", () => {
-    const t = blankTicket({ stage: "in_repair", requested_parts: [{ name: "Crown", sent_at: "2026-09-06" }] });
+  it("steps back along the visible path, through Waiting for parts when the ticket went there", () => {
+    const t = blankTicket({ stage: "in_repair", visited_request_part: true });
     expect(sendBack(t, WATCHMAKER, SCOPE, NODUS)).toMatchObject({ ok: true, kind: "sent_back", to: "request_part" });
     expect(sendBack(blankTicket({ stage: "in_repair" }), WATCHMAKER, SCOPE, NODUS)).toMatchObject({ to: "received" });
   });

@@ -97,7 +97,7 @@ export function TicketSidebar({ tickets, closed, benchOnly, canCreate }: Props) 
           <section key={g.stage} className="mt-2">
             <h3 className="flex items-center gap-2 px-4 pb-1 pt-2 text-[11.5px] font-medium uppercase tracking-[0.06em] text-text-3">
               {STAGE_DEFINITIONS[g.stage].name}
-              {g.stage === "request_part" && <span className="normal-case tracking-normal">· brand rep</span>}
+              {g.stage === "request_part" && <span className="normal-case tracking-normal">· stock</span>}
               <span className="ml-auto rounded-full bg-surface-2 px-1.5 text-[11px] text-text-2">{g.items.length}</span>
             </h3>
             <ul>

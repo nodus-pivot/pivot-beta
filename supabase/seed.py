@@ -85,7 +85,7 @@ PARTS = [
     (217, NODUS_WS, "DL-SD-01", "Dial, Sector Deep", "dial", 48, 2, 0, [SD]),
     (213, NODUS_WS, "BZ-SGMT-24", "Bezel insert, GMT 24h", "bezel_insert", 55, 2, 2, [SGMT]),
     (215, NODUS_WS, "CS-SGMT-01", "Case, Sector GMT", "case", 110, 1, 1, [SGMT]),
-    (218, NODUS_WS, "DL-SGMT-01", "Dial, Sector GMT", "dial", 48, 2, 3, [SGMT]),
+    (218, NODUS_WS, "DL-SGMT-01", "Dial, Sector GMT", "dial", 48, 2, 0, [SGMT]),
     (206, NODUS_WS, "DL-AV2-01", "Dial, Avalon II", "dial", 60, 2, 0, [AV2]),
     (219, NODUS_WS, "CS-AV2-01", "Case, Avalon II", "case", 95, 1, 2, [AV2]),
     (220, NODUS_WS, "CB-AV2-01", "Caseback, Avalon II", "caseback", 18, 2, 4, [AV2]),
@@ -176,7 +176,8 @@ emit()
 emit("-- Reorders in progress for two of the out-of-stock parts.")
 emit("insert into part_orders (id, part_id, qty, ordered_at, expected_at, note) values")
 emit(f"  ({q(uid(6001))}, {q(uid(206))}, 5, current_date - 3, current_date + 10, 'demo seed · PO 1182'),")
-emit(f"  ({q(uid(6002))}, {q(uid(310))}, 4, current_date - 6, current_date + 4, 'demo seed');")
+emit(f"  ({q(uid(6002))}, {q(uid(310))}, 4, current_date - 6, current_date + 4, 'demo seed'),")
+emit(f"  ({q(uid(6003))}, {q(uid(218))}, 3, current_date - 2, current_date + 8, 'demo seed · PO 1190');")
 emit()
 
 # ------------------------------------------------------------------ people
@@ -254,7 +255,7 @@ BRANDS = [
 PLAN = {
     "intake":       {"replace": [], "repair": []},
     "received":     {"replace": ["bezel_insert"], "repair": []},
-    "request_part": {"replace": ["dial", "crown_tube"], "repair": ["movement"]},
+    "request_part": {"replace": ["dial", "crystal", "crown_tube"], "repair": ["movement"]},
     "in_repair":    {"replace": ["bezel_insert"], "repair": ["case"]},
     "testing":      {"replace": ["gaskets"], "repair": ["crystal"]},
     "shipped_back": {"replace": [], "repair": ["movement"]},

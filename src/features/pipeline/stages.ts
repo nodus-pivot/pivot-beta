@@ -37,10 +37,10 @@ export const STAGE_DEFINITIONS: Record<Stage, StageDefinition> = {
   },
   request_part: {
     id: "request_part",
-    name: "Request Part",
+    name: "Waiting for parts",
     publicName: "Getting a part ready for your repair",
     owners: ["brand_rep", "watchmaker"],
-    actionLabel: "All sent",
+    actionLabel: "Continue",
   },
   in_repair: {
     id: "in_repair",

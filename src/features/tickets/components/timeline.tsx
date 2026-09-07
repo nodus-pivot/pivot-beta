@@ -19,6 +19,7 @@ function describe(e: TicketEvent): string {
     case "address_update_requested": return `The customer ${e.body?.replace(/^the customer /, "") ?? "asked to change the return address"}`;
     case "watch_received":
     case "parts_requested":
+    case "parts_waiting":
     case "part_sent":
     case "repair_complete":
     case "testing_complete":

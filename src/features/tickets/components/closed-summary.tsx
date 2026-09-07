@@ -25,9 +25,11 @@ export function ClosedSummary({ t }: { t: TicketDetail }) {
       value: cats.length ? (
         <ul className="flex flex-col gap-0.5">
           {cats.map((c) => (
-            <li key={c.component}>
+            <li key={c.component} className={c.done ? "" : "text-text-3"}>
               {c.action ? ACTION_LABELS[c.action] : "—"} — {componentLabel(c.component)}
               {c.variant ? ` (${c.variant})` : ""}
+              {c.planned && !c.done && <span className="ml-2 text-[12.5px]">planned, not done</span>}
+              {!c.planned && c.done && <span className="ml-2 text-[12.5px] text-text-3">found on the bench</span>}
             </li>
           ))}
         </ul>

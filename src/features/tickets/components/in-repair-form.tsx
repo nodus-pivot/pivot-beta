@@ -18,8 +18,8 @@ import { saveInRepair } from "../actions";
 type CatalogPart = { id: string; name: string; sku: string; component: string };
 type PartRow = { id: string; part_id: string | null; name: string; sku: string | null; component: string | null; sent_at: string | null; consumed: boolean };
 
-/** One row of Work performed: the diagnosis row plus its part, if replacing. */
-type Row = { component: Component; action: RepairAction | null; variant: string | null; part_id: string | null; part_name: string | null };
+/** One row of Work performed: the diagnosis row plus its part, if replacing. Planned rows came from the diagnosis; done is ticked here. */
+type Row = { component: Component; action: RepairAction | null; variant: string | null; part_id: string | null; part_name: string | null; planned: boolean; done: boolean };
 
 type Props = {
   ticketId: string;
@@ -56,6 +56,8 @@ function buildRows(p: Props): Row[] {
         variant: c.variant ?? null,
         part_id: c.action === "replace" ? (part?.part_id ?? null) : null,
         part_name: c.action === "replace" && part && !part.part_id ? part.name : null,
+        planned: c.planned === true,
+        done: c.done === true,
       };
     });
 }
@@ -106,8 +108,12 @@ export function InRepairForm(p: Props) {
     setRows(next);
     persist({ rows: next });
   }
+  // Adding a component here means it was found and done on the bench: unplanned, done.
   function toggleComponent(c: Component) {
-    setRowsAndSave(rows.some((x) => x.component === c) ? rows.filter((x) => x.component !== c) : [...rows, { component: c, action: null, variant: null, part_id: null, part_name: null }]);
+    setRowsAndSave(rows.some((x) => x.component === c) ? rows.filter((x) => x.component !== c) : [...rows, { component: c, action: null, variant: null, part_id: null, part_name: null, planned: false, done: true }]);
+  }
+  function setDone(component: Component, done: boolean) {
+    setRowsAndSave(rows.map((x) => (x.component === component ? { ...x, done } : x)));
   }
   function setAction(row: Row, action: RepairAction | null) {
     const fits = p.catalogParts.filter((c) => c.component === row.component);
@@ -127,13 +133,82 @@ export function InRepairForm(p: Props) {
 
   const actionsFor = (c: Component): RepairAction[] => (c === "movement" ? ["repair", "regulate", "replace"] : ["repair", "replace"]);
   const replacing = rows.filter((r) => r.action === "replace");
+  const planned = rows.filter((r) => r.planned);
+  const extra = rows.filter((r) => !r.planned);
+  const doneCount = rows.filter((r) => r.done).length;
+
+  function renderRow(x: Row) {
+    const variants = x.action === "replace" ? VARIANTS[x.component] : undefined;
+    const fits = p.catalogParts.filter((c) => c.component === x.component);
+    const part = p.parts.find((r) => r.component === x.component);
+    return (
+      <li key={x.component} className={`flex flex-wrap items-center gap-x-4 gap-y-2 py-2.5 ${x.done ? "" : "opacity-90"}`}>
+        <label className="flex w-[150px] items-center gap-2.5 text-[15px]">
+          <input type="checkbox" checked={x.done} disabled={dis} onChange={(e) => setDone(x.component, e.target.checked)} aria-label={`${COMPONENT_LABELS[x.component]} done`} className="h-4 w-4 accent-[var(--pivot-accent)]" />
+          <span className={x.done ? "" : "text-text-2"}>{COMPONENT_LABELS[x.component]}</span>
+        </label>
+        <span className="flex gap-1.5">
+          {actionsFor(x.component).map((a) => (
+            <button key={a} type="button" disabled={dis} aria-pressed={x.action === a} onClick={() => setAction(x, x.action === a ? null : a)} className={pill(x.action === a, dis, "sm")}>
+              {ACTION_LABELS[a]}
+            </button>
+          ))}
+        </span>
+        {x.action === "replace" && fits.length > 1 && (
+          <select
+            value={x.part_id ?? ""}
+            disabled={dis}
+            onChange={(e) => patchRow(x.component, { part_id: e.target.value || null, part_name: null })}
+            aria-label={`Which ${COMPONENT_LABELS[x.component]} part`}
+            className="h-7 rounded-lg border border-border-strong bg-transparent px-2 text-[12.5px] text-text focus:border-accent focus:outline-none"
+          >
+            <option value="">Which part?</option>
+            {fits.map((c) => (
+              <option key={c.id} value={c.id}>{c.name} · {c.sku}</option>
+            ))}
+          </select>
+        )}
+        {x.action === "replace" && fits.length === 1 && (
+          <span className="text-[12.5px] text-text-3">
+            {fits[0].name} <span className="font-mono">{fits[0].sku}</span>
+          </span>
+        )}
+        {x.action === "replace" && fits.length === 0 && (
+          <input
+            value={x.part_name ?? ""}
+            disabled={dis}
+            placeholder="Part name (not in catalog)"
+            aria-label={`${COMPONENT_LABELS[x.component]} part name`}
+            onChange={(e) => setRows((rs) => rs.map((r) => (r.component === x.component ? { ...r, part_name: e.target.value } : r)))}
+            onBlur={(e) => patchRow(x.component, { part_name: e.target.value.trim() || null })}
+            className="h-7 w-48 rounded-lg border border-border-strong bg-transparent px-2 text-[12.5px] text-text placeholder:text-text-3 focus:border-accent focus:outline-none"
+          />
+        )}
+        {x.action === "replace" && part?.sent_at && <span className="text-[12.5px] text-green">shipped {formatDate(part.sent_at)}</span>}
+        {variants && (
+          <span className="flex items-center gap-1.5">
+            <span className="text-[13px] text-text-3">{x.component === "movement" ? "Which movement?" : "Which material?"}</span>
+            {variants.map((v) => (
+              <button key={v} type="button" disabled={dis} aria-pressed={x.variant === v} onClick={() => patchRow(x.component, { variant: v })} className={pill(x.variant === v, dis, "sm")}>
+                {v}
+              </button>
+            ))}
+          </span>
+        )}
+        <button type="button" disabled={dis} onClick={() => toggleComponent(x.component)} aria-label={`Remove ${COMPONENT_LABELS[x.component]}`} className="ml-auto text-text-3 hover:text-text disabled:opacity-50">
+          <X size={14} />
+        </button>
+                </li>
+
+    );
+  }
 
   return (
     <div className="flex flex-col gap-8">
       <div className="flex items-baseline justify-between">
         <div>
           <h2 className="text-[22px]">In repair</h2>
-          <p className="mt-1 text-[14.5px] text-text-2">Started from the diagnosis. Change anything that turned out different on the bench, then record notes and time.</p>
+          <p className="mt-1 text-[14.5px] text-text-2">Tick each planned item as it’s done, add anything found on the bench, then notes and time.</p>
         </div>
         <span className="flex-none text-[12.5px] text-text-3" aria-live="polite">
           {status === "saving" || pending ? "Saving…" : status === "saved" ? "Saved" : status === "error" ? "Couldn't save" : ""}
@@ -143,7 +218,7 @@ export function InRepairForm(p: Props) {
       {/* Work performed */}
       <div>
         <span className={label}>
-          Work performed<span className={hint}>tap a component to add it</span>
+          Work performed<span className={hint}>{doneCount}/{rows.length} done · tap a component to add work found on the bench</span>
         </span>
         <div className="mt-3 flex flex-wrap gap-2">
           {COMPONENTS.map((c) => {
@@ -155,71 +230,22 @@ export function InRepairForm(p: Props) {
             );
           })}
         </div>
-        {rows.length > 0 && (
-          <ul className="mt-4 divide-y divide-border border-y border-border">
-            {rows.map((x) => {
-              const variants = x.action === "replace" ? VARIANTS[x.component] : undefined;
-              const fits = p.catalogParts.filter((c) => c.component === x.component);
-              const part = p.parts.find((r) => r.component === x.component);
-              return (
-                <li key={x.component} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-2.5">
-                  <span className="w-[120px] text-[15px]">{COMPONENT_LABELS[x.component]}</span>
-                  <span className="flex gap-1.5">
-                    {actionsFor(x.component).map((a) => (
-                      <button key={a} type="button" disabled={dis} aria-pressed={x.action === a} onClick={() => setAction(x, x.action === a ? null : a)} className={pill(x.action === a, dis, "sm")}>
-                        {ACTION_LABELS[a]}
-                      </button>
-                    ))}
-                  </span>
-                  {x.action === "replace" && fits.length > 1 && (
-                    <select
-                      value={x.part_id ?? ""}
-                      disabled={dis}
-                      onChange={(e) => patchRow(x.component, { part_id: e.target.value || null, part_name: null })}
-                      aria-label={`Which ${COMPONENT_LABELS[x.component]} part`}
-                      className="h-7 rounded-lg border border-border-strong bg-transparent px-2 text-[12.5px] text-text focus:border-accent focus:outline-none"
-                    >
-                      <option value="">Which part?</option>
-                      {fits.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name} · {c.sku}</option>
-                      ))}
-                    </select>
-                  )}
-                  {x.action === "replace" && fits.length === 1 && (
-                    <span className="text-[12.5px] text-text-3">
-                      {fits[0].name} <span className="font-mono">{fits[0].sku}</span>
-                    </span>
-                  )}
-                  {x.action === "replace" && fits.length === 0 && (
-                    <input
-                      value={x.part_name ?? ""}
-                      disabled={dis}
-                      placeholder="Part name (not in catalog)"
-                      aria-label={`${COMPONENT_LABELS[x.component]} part name`}
-                      onChange={(e) => setRows((rs) => rs.map((r) => (r.component === x.component ? { ...r, part_name: e.target.value } : r)))}
-                      onBlur={(e) => patchRow(x.component, { part_name: e.target.value.trim() || null })}
-                      className="h-7 w-48 rounded-lg border border-border-strong bg-transparent px-2 text-[12.5px] text-text placeholder:text-text-3 focus:border-accent focus:outline-none"
-                    />
-                  )}
-                  {x.action === "replace" && part?.sent_at && <span className="text-[12.5px] text-green">shipped {formatDate(part.sent_at)}</span>}
-                  {variants && (
-                    <span className="flex items-center gap-1.5">
-                      <span className="text-[13px] text-text-3">{x.component === "movement" ? "Which movement?" : "Which material?"}</span>
-                      {variants.map((v) => (
-                        <button key={v} type="button" disabled={dis} aria-pressed={x.variant === v} onClick={() => patchRow(x.component, { variant: v })} className={pill(x.variant === v, dis, "sm")}>
-                          {v}
-                        </button>
-                      ))}
-                    </span>
-                  )}
-                  <button type="button" disabled={dis} onClick={() => toggleComponent(x.component)} aria-label={`Remove ${COMPONENT_LABELS[x.component]}`} className="ml-auto text-text-3 hover:text-text disabled:opacity-50">
-                    <X size={14} />
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+        {planned.length > 0 && (
+          <div className="mt-4">
+            <p className="flex items-baseline gap-2 text-[11.5px] font-medium uppercase tracking-[0.06em] text-text-3">
+              Planned at diagnosis
+              <span className="font-mono normal-case tracking-normal">{planned.filter((r) => r.done).length}/{planned.length} done</span>
+            </p>
+            <ul className="mt-1.5 divide-y divide-border border-y border-border">{planned.map((x) => renderRow(x))}</ul>
+          </div>
         )}
+        {extra.length > 0 && (
+          <div className="mt-4">
+            <p className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-text-3">Also done <span className="normal-case tracking-normal">· found on the bench</span></p>
+            <ul className="mt-1.5 divide-y divide-border border-y border-border">{extra.map((x) => renderRow(x))}</ul>
+          </div>
+        )}
+        {rows.length === 0 && <p className="mt-3 text-[13.5px] text-text-3">Nothing planned. Tap a component above to record work.</p>}
         {replacing.length > 0 && (
           <p className="mt-3 text-[13px] text-text-3">
             Replacing {replacing.map((r) => COMPONENT_LABELS[r.component]).join(", ")}. Each replacement with a catalog part takes one unit out of stock; unpicking it puts the unit back.

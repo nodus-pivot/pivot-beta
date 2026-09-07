@@ -40,8 +40,12 @@ export type RepairAction = "repair" | "replace" | "regulate";
 /** One row of the 1c condition grid. */
 export type IntakeCondition = { component: string; conditions: string[] };
 
-/** One row of the 1e "Work performed" list. */
-export type RepairCategory = { component: string; action?: RepairAction; variant?: string };
+/**
+ * One row of the diagnosis / Work performed list. `planned` rows came from
+ * the diagnosis; `done` is ticked in In repair. Rows added in In repair are
+ * unplanned ("also done").
+ */
+export type RepairCategory = { component: string; action?: RepairAction; variant?: string; planned?: boolean; done?: boolean };
 
 export type TestingChecks = { timekeeping: boolean; water_resistance: boolean; visual: boolean };
 
@@ -79,6 +83,8 @@ export type PipelineTicket = {
   has_inbound_label: boolean;
   /** The ticket passed through Send Return Label at some point. */
   visited_send_return_label: boolean;
+  /** The ticket parked in Waiting for parts at some point (so the stage stays on its path). */
+  visited_request_part?: boolean;
   /** The customer asked for a different return address and staff haven't reviewed it. */
   has_pending_address?: boolean;
 };

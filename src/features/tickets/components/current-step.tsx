@@ -1,14 +1,13 @@
 import { STAGE_DEFINITIONS, canActOn, isLiveStage, type Grant } from "@/features/pipeline";
 import { asCategories, asChecks, asConditions, type TicketDetail } from "../detail";
 import type { ReturnAddress } from "../schema";
-import { getPartsForWatch, getPartsStock } from "../queries";
+import { getPartsForWatch } from "../queries";
 import { createClient } from "@/lib/supabase/server";
-import { addressLines, getWorkspaceContext, type Address } from "@/features/workspaces/queries";
 import { ClosedSummary } from "./closed-summary";
 import { InRepairForm } from "./in-repair-form";
 import { IntakeStageForm } from "./intake-stage-form";
 import { ReceivedForm } from "./received-form";
-import { RequestPartForm } from "./request-part-form";
+import { WaitingForParts } from "./waiting-for-parts";
 import { ReturnHomeForm } from "./return-home-form";
 import { TestingForm } from "./testing-form";
 
@@ -45,6 +44,18 @@ export async function CurrentStep({ t, grants }: { t: TicketDetail; grants: Gran
     }
     case "received": {
       const catalogParts = await getPartsForWatch(t.watch_id);
+      const supabase = await createClient();
+      const ids = catalogParts.map((c) => c.id);
+      const [{ data: levels }, { data: open }] = ids.length
+        ? await Promise.all([
+            supabase.from("parts_stock").select("part_id, stock_qty").in("part_id", ids),
+            supabase.from("part_orders").select("part_id, ordered_at, expected_at").in("part_id", ids).is("received_at", null).order("ordered_at"),
+          ])
+        : [{ data: [] }, { data: [] }];
+      const availability: Record<string, { inStock: boolean; order: { ordered_at: string; expected_at: string | null } | null }> = {};
+      for (const id of ids) availability[id] = { inStock: false, order: null };
+      for (const l of levels ?? []) if (l.part_id) availability[l.part_id] = { inStock: (l.stock_qty ?? 0) > 0, order: null };
+      for (const o of open ?? []) if (availability[o.part_id] && !availability[o.part_id].order) availability[o.part_id].order = { ordered_at: o.ordered_at, expected_at: o.expected_at };
       return (
         <ReceivedForm
           ticketId={t.id}
@@ -57,38 +68,24 @@ export async function CurrentStep({ t, grants }: { t: TicketDetail; grants: Gran
           notes={t.intake_notes}
           brandName={t.brand.name}
           catalogParts={catalogParts}
+          availability={availability}
           parts={t.parts.filter((x) => x.source === "brand").map((x) => ({ id: x.id, part_id: x.part_id, name: x.name, component: x.component, sent_at: x.sent_at }))}
         />
       );
     }
     case "request_part": {
       const brandParts = t.parts.filter((x) => x.source === "brand");
-      const [stock, { workspaces }] = await Promise.all([
-        getPartsStock(brandParts.map((x) => x.part_id).filter((id): id is string => !!id)),
-        getWorkspaceContext(),
-      ]);
-      const bench = (workspaces.find((w) => w.id === t.workspace_id)?.bench_address ?? null) as Address | null;
-      const shipTo = bench && addressLines(bench).length ? { name: bench.name ?? "The bench", lines: addressLines(bench) } : null;
       return (
-        <RequestPartForm
-          ticketId={t.id}
-          canEdit={canEdit}
+        <WaitingForParts
           brandName={t.brand.name}
-          watchmakerName="The watchmaker"
           parts={brandParts.map((x) => ({
             id: x.id,
             name: x.name,
             sku: x.sku,
-            sent_at: x.sent_at,
-            tracking_number: x.tracking_number,
-            stock: x.part_id ? stock[x.part_id] : undefined,
             available: x.part_id ? (t.stock[x.part_id] ?? 0) >= x.qty : null,
-            order: x.part_id ? t.orders[x.part_id] : undefined,
-            opsHref: x.part_id ? `/ops/parts/${x.part_id}` : undefined,
+            order: x.part_id ? (t.orders[x.part_id] ?? null) : null,
+            opsHref: x.part_id ? `/ops/parts/${x.part_id}` : null,
           }))}
-          requestedAt={t.parts_requested_at}
-          snoozedUntil={t.parts_reminder_snoozed_until}
-          shipTo={shipTo}
         />
       );
     }

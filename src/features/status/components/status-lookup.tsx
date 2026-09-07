@@ -50,7 +50,7 @@ function Lookup({ onAnother }: { onAnother: () => void }) {
 function publicPath(s: CustomerStatus): Stage[] {
   return LIVE_STAGES.filter((st) => {
     if (st === "send_return_label") return !!s.reached.send_return_label;
-    if (st === "request_part") return s.requested_parts;
+    if (st === "request_part") return !!s.reached.request_part;
     return true;
   });
 }

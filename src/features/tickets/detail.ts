@@ -64,6 +64,7 @@ export function toPipelineTicket(t: TicketDetail): PipelineTicket {
     has_outbound_tracking: t.shipments.some((s) => s.direction === "outbound" && !!s.tracking_number),
     has_inbound_label: t.shipments.some((s) => s.direction === "inbound" && (!!s.label_path || !!s.tracking_number)),
     visited_send_return_label: t.events.some((e) => e.to_stage === "send_return_label"),
+    visited_request_part: t.events.some((e) => e.to_stage === "request_part"),
     has_pending_address: !!t.pending_return_address,
   };
 }
@@ -78,11 +79,13 @@ export function asConditions(v: unknown): IntakeCondition[] {
 export function asCategories(v: unknown): RepairCategory[] {
   if (!Array.isArray(v)) return [];
   return v
-    .filter((c): c is { component: string; action?: unknown; variant?: unknown } => !!c && typeof c === "object" && typeof (c as { component?: unknown }).component === "string")
+    .filter((c): c is { component: string; action?: unknown; variant?: unknown; planned?: unknown; done?: unknown } => !!c && typeof c === "object" && typeof (c as { component?: unknown }).component === "string")
     .map((c) => ({
       component: c.component,
       action: typeof c.action === "string" && c.action in ACTION_LABELS ? (c.action as RepairAction) : undefined,
       variant: typeof c.variant === "string" ? c.variant : undefined,
+      planned: c.planned === true ? true : undefined,
+      done: c.done === true ? true : undefined,
     }));
 }
 
@@ -121,15 +124,16 @@ export function stageSummaryRows(stage: Stage, t: TicketDetail): SummaryRow[] {
     }
     case "request_part": {
       const parts = t.parts.filter((p) => p.source === "brand");
-      return [
-        { label: "Parts", value: parts.length ? parts.map((p) => `${p.name}${p.sent_at ? ` sent ${formatDate(p.sent_at)}` : " (not sent)"}`).join("; ") : "—" },
-        ...(parts.some((p) => p.tracking_number) ? [{ label: "Tracking", value: parts.map((p) => p.tracking_number).filter(Boolean).join(", ") }] : []),
-      ];
+      return [{ label: "Waited for", value: parts.length ? parts.map((p) => p.name).join(", ") : "—" }];
     }
     case "in_repair": {
       const cats = asCategories(t.repair_categories);
+      const line = (c: RepairCategory) => `${c.action ? ACTION_LABELS[c.action] : "?"} — ${componentLabel(c.component)}${c.variant ? ` (${c.variant})` : ""}`;
+      const done = cats.filter((c) => c.done);
+      const notDone = cats.filter((c) => !c.done);
       return [
-        { label: "Work performed", value: cats.length ? cats.map((c) => `${c.action ? ACTION_LABELS[c.action] : "?"} — ${componentLabel(c.component)}${c.variant ? ` (${c.variant})` : ""}`).join("; ") : "—" },
+        { label: "Work performed", value: done.length ? done.map(line).join("; ") : cats.length ? "nothing ticked done yet" : "—" },
+        ...(notDone.length && done.length ? [{ label: "Planned, not done", value: notDone.map(line).join("; ") }] : []),
         ...(t.parts.length ? [{ label: "Parts used", value: t.parts.map((p) => `${p.name}${p.source === "brand" ? " (from brand)" : " (bench stock)"}`).join("; ") }] : []),
         ...(t.solution_notes ? [{ label: "Solution notes", value: t.solution_notes }] : []),
         { label: "Time spent", value: formatMinutes(t.time_spent_minutes) },

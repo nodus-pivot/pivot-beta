@@ -33,6 +33,8 @@ type Props = {
   brandName: string;
   /** Catalog parts that fit this watch (name + SKU; the bench never sees cost or stock). */
   catalogParts: CatalogPart[];
+  /** Whether each catalog part is in stock, and any open reorder. */
+  availability: Record<string, { inStock: boolean; order: { ordered_at: string; expected_at: string | null } | null }>;
   /** Brand parts already on the ticket; sent ones are locked. */
   parts: { id: string; part_id: string | null; name: string; component: string | null; sent_at: string | null }[];
 };
@@ -125,6 +127,9 @@ export function ReceivedForm(p: Props) {
   const sentParts = p.parts.filter((x) => x.sent_at);
   const assessed = rows.filter((r) => r.conditions.length > 0 || r.action);
   const replacing = rows.filter((r) => r.action === "replace");
+  const missingParts = replacing
+    .filter((r) => r.part_id && p.availability[r.part_id] && !p.availability[r.part_id].inStock)
+    .map((r) => p.catalogParts.find((c) => c.id === r.part_id)?.name ?? COMPONENT_LABELS[r.component]);
 
   return (
     <div className="flex flex-col gap-8">
@@ -231,6 +236,7 @@ export function ReceivedForm(p: Props) {
                             {fits[0].name} <span className="font-mono">{fits[0].sku}</span>
                           </span>
                         )}
+                        {row.action === "replace" && row.part_id && <Availability a={p.availability[row.part_id]} />}
                         {row.action === "replace" && fits.length === 0 && (
                           <input
                             value={row.part_name ?? ""}
@@ -253,9 +259,11 @@ export function ReceivedForm(p: Props) {
         </div>
         {assessed.length > 0 && (
           <p className="mt-3 text-[13.5px] text-text-3">
-            {replacing.length > 0
-              ? `Replacing ${replacing.map((r) => COMPONENT_LABELS[r.component]).join(", ")} on the ${p.watchModel}. Continue checks ${p.brandName} stock for those parts.`
-              : "No replacements. Continue goes straight to In repair."}
+            {replacing.length === 0
+              ? "No replacements. Continue goes straight to In repair."
+              : missingParts.length > 0
+                ? `${missingParts.join(", ")} ${missingParts.length === 1 ? "is" : "are"} out of stock. Continue parks the ticket in Waiting for parts until the delivery is logged under Supply.`
+                : `Replacing ${replacing.map((r) => COMPONENT_LABELS[r.component]).join(", ")}, all in stock. Continue goes to In repair and takes the parts out of stock.`}
           </p>
         )}
       </div>
@@ -290,5 +298,15 @@ export function ReceivedForm(p: Props) {
 
       {error && <p className="text-[13px] text-red">{error}</p>}
     </div>
+  );
+}
+
+function Availability({ a }: { a?: { inStock: boolean; order: { ordered_at: string; expected_at: string | null } | null } }) {
+  if (!a) return null;
+  if (a.inStock) return <span className="text-[12.5px] text-green">in stock</span>;
+  return (
+    <span className="text-[12.5px] text-amber">
+      out of stock{a.order ? ` · on order${a.order.expected_at ? `, expected ${formatDate(a.order.expected_at)}` : ""}` : ""}
+    </span>
   );
 }
