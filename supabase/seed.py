@@ -303,7 +303,8 @@ for prefix, ws, brand, watches, rep, base, customers in BRANDS:
         created_days = 30 - 3 * k
         received_days = created_days - 1 if reached >= 1 else None
         intake = [{"component": c, "conditions": CONDITIONS.get(c, ["Lightly worn"]) or ["Lightly worn"]} for c in plan["replace"] + plan["repair"]] if reached >= 1 else []
-        cats = [{"component": c, "action": "replace", **({"variant": VARIANT[c]} if c in VARIANT else {})} for c in plan["replace"]] + [{"component": c, "action": "repair" if c != "movement" else "regulate"} for c in plan["repair"]]
+        done = reached >= 4  # testing and later: the plan was carried out
+        cats = [{"component": c, "action": "replace", "planned": True, **({"done": True} if done else {}), **({"variant": VARIANT[c]} if c in VARIANT else {})} for c in plan["replace"]] + [{"component": c, "action": "repair" if c != "movement" else "regulate", "planned": True, **({"done": True} if done else {})} for c in plan["repair"]]
         cats = cats if reached >= 1 else []
         repair_complete = reached >= 4
         checks = {"timekeeping": reached >= 5, "water_resistance": reached >= 5, "visual": reached >= 5} if reached >= 4 else {"timekeeping": reached >= 4, "water_resistance": False, "visual": False}
