@@ -1140,6 +1140,14 @@ export type Database = {
         Returns: undefined
       }
       consume_ticket_part: { Args: { p_row: string }; Returns: undefined }
+      customer_request_address_update: {
+        Args: { p_address: Json; p_email: string; p_ticket_number: string }
+        Returns: boolean
+      }
+      customer_ticket_status: {
+        Args: { p_email: string; p_ticket_number: string }
+        Returns: Json
+      }
       my_real_grants: {
         Args: never
         Returns: {

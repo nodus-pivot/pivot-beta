@@ -11,6 +11,8 @@ export type EditCustomerProps = {
   ticketId: string;
   customer: { name: string | null; email: string | null; phone: string | null };
   address: ReturnAddress | null;
+  /** The address the customer asked for from the status page, if any. Saving clears it. */
+  pendingAddress?: ReturnAddress | null;
   /** Closed tickets are read-only. */
   canEdit: boolean;
   /** Visual style of the trigger. */
@@ -26,6 +28,8 @@ const label = "block text-[13.5px] font-medium text-text-2";
 export function EditCustomerDialog(p: EditCustomerProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  // Which address fills the form: the one on file, or the customer's requested one.
+  const [source, setSource] = useState<"current" | "pending">("current");
   const [state, action, pending] = useActionState<CustomerState, FormData>(async (prev, fd) => {
     const r = await updateCustomer(prev, fd);
     if (r.saved) {
@@ -36,7 +40,7 @@ export function EditCustomerDialog(p: EditCustomerProps) {
   }, {});
   const errs = state.fieldErrors ?? {};
 
-  const a: Partial<ReturnAddress> = p.address ?? {};
+  const a: Partial<ReturnAddress> = (source === "pending" ? p.pendingAddress : p.address) ?? {};
   const triggerClass =
     p.trigger === "button"
       ? "inline-flex h-8 items-center rounded-lg border border-border-strong px-2.5 text-[13px] text-text-2 hover:border-accent-text hover:text-accent-text disabled:opacity-60"
@@ -53,7 +57,18 @@ export function EditCustomerDialog(p: EditCustomerProps) {
             <DialogTitle className="text-[18px] font-medium">Edit customer</DialogTitle>
             <DialogDescription className="text-[14px] text-text-2">Contact details and the address the watch ships back to. Changes are logged on the timeline.</DialogDescription>
           </DialogHeader>
-          <form action={action} noValidate className="flex flex-col gap-4">
+          {p.pendingAddress && (
+            <div className="rounded-lg border border-amber-border bg-amber-bg px-3 py-2 text-[13.5px] text-amber">
+              The customer asked to change the return address to: {[p.pendingAddress.line1, p.pendingAddress.line2, p.pendingAddress.city, p.pendingAddress.state, p.pendingAddress.postal_code, p.pendingAddress.country].filter(Boolean).join(", ")}.
+              {source === "pending" ? (
+                <span className="ml-2 text-text-2">Filled in below.</span>
+              ) : (
+                <button type="button" onClick={() => setSource("pending")} className="ml-2 text-accent-text hover:underline">Use it</button>
+              )}
+              <span className="block text-[12.5px]">Saving clears the request either way.</span>
+            </div>
+          )}
+          <form key={source} action={action} noValidate className="flex flex-col gap-4">
             <input type="hidden" name="ticket_id" value={p.ticketId} />
             <Field id="ec_name" label="Name" error={errs.customer_name}>
               <input id="ec_name" name="customer_name" defaultValue={p.customer.name ?? ""} required className={field} aria-invalid={!!errs.customer_name || undefined} />

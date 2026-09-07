@@ -79,6 +79,8 @@ export type PipelineTicket = {
   has_inbound_label: boolean;
   /** The ticket passed through Send Return Label at some point. */
   visited_send_return_label: boolean;
+  /** The customer asked for a different return address and staff haven't reviewed it. */
+  has_pending_address?: boolean;
 };
 
 export type WorkspacePipelineSettings = {

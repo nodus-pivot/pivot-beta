@@ -78,6 +78,7 @@ export function missingFor(ticket: PipelineTicket, opts: GateOptions = {}): stri
       if (!ticket.has_outbound_tracking && !ticket.in_person_handoff) {
         missing.push("tracking number or in-person handoff");
       }
+      if (ticket.has_pending_address && !ticket.in_person_handoff) missing.push("customer's address change reviewed");
       break;
     }
 

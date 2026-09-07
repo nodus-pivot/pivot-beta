@@ -95,6 +95,11 @@ describe("missingFor", () => {
     expect(missingFor(blankTicket({ stage: "shipped_back", in_person_handoff: true }))).toEqual([]);
     expect(missingFor(blankTicket({ stage: "shipped_back", has_outbound_tracking: true }))).toEqual([]);
   });
+  it("return home waits for staff to review a customer's address change", () => {
+    const t = blankTicket({ stage: "shipped_back", has_outbound_tracking: true, has_pending_address: true });
+    expect(missingFor(t)).toEqual(["customer's address change reviewed"]);
+    expect(missingFor({ ...t, in_person_handoff: true })).toEqual([]);
+  });
   it("only an admin can override the payment gate", () => {
     const t = blankTicket({ stage: "shipped_back", requires_payment: true, has_outbound_tracking: true });
     expect(missingFor(t, { overridePayment: true, isAdmin: true })).toEqual([]);

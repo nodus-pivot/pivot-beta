@@ -31,8 +31,10 @@ export function MetaStrip({ t }: { t: TicketDetail }) {
             ticketId={t.id}
             customer={{ name: t.customer_name, email: t.customer_email, phone: t.customer_phone }}
             address={(t.return_address as ReturnAddress | null) ?? null}
+            pendingAddress={(t.pending_return_address as ReturnAddress | null) ?? null}
             canEdit={t.stage !== "closed"}
           />
+          {t.pending_return_address && <span className="ml-2 rounded-full bg-amber-bg px-2 text-[11.5px] text-amber">address update requested</span>}
         </dd>
       </div>
       <Item label="Emails" value={`${emails} logged`} action="View" />

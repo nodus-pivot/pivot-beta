@@ -15,6 +15,7 @@ type Props = {
   customerEmail: string | null;
   customerPhone: string | null;
   address: ReturnAddress | null;
+  pendingAddress: ReturnAddress | null;
   requiresPayment: boolean;
   paymentStatus: "none" | "invoiced" | "paid";
   signatureRequired: boolean;
@@ -94,12 +95,13 @@ export function ReturnHomeForm(p: Props) {
         <span className={`${label} flex items-center gap-3`}>
           Ship to
           <span className="text-[13px] font-normal">
-            <EditCustomerDialog ticketId={p.ticketId} customer={{ name: p.customerName, email: p.customerEmail, phone: p.customerPhone }} address={p.address} canEdit />
+            <EditCustomerDialog ticketId={p.ticketId} customer={{ name: p.customerName, email: p.customerEmail, phone: p.customerPhone }} address={p.address} pendingAddress={p.pendingAddress} canEdit />
           </span>
         </span>
         <div className="mt-2 rounded-lg border border-border bg-surface px-4 py-3 text-[14.5px]">
           <p className="font-medium">{p.customerName ?? "—"}</p>
           {lines.length ? lines.map((l, i) => <p key={i} className="text-text-2">{l}</p>) : <p className="text-text-3">No return address on file.</p>}
+          {p.pendingAddress && <p className="mt-2 text-[13px] text-amber">The customer asked to change this address. Open Edit to review it before shipping.</p>}
         </div>
       </div>
 

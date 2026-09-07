@@ -64,6 +64,7 @@ export function toPipelineTicket(t: TicketDetail): PipelineTicket {
     has_outbound_tracking: t.shipments.some((s) => s.direction === "outbound" && !!s.tracking_number),
     has_inbound_label: t.shipments.some((s) => s.direction === "inbound" && (!!s.label_path || !!s.tracking_number)),
     visited_send_return_label: t.events.some((e) => e.to_stage === "send_return_label"),
+    has_pending_address: !!t.pending_return_address,
   };
 }
 

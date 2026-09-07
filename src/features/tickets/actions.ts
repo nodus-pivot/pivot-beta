@@ -579,7 +579,7 @@ export async function updateCustomer(_prev: CustomerState, fd: FormData): Promis
 
   const { error } = await supabase
     .from("tickets")
-    .update({ customer_name: input.customer_name, customer_email: input.customer_email, customer_phone: input.customer_phone, return_address: input.return_address })
+    .update({ customer_name: input.customer_name, customer_email: input.customer_email, customer_phone: input.customer_phone, return_address: input.return_address, pending_return_address: null, pending_return_address_at: null })
     .eq("id", input.ticketId);
   if (error) return { error: error.message };
   if (changed.length) {

@@ -16,6 +16,7 @@ function describe(e: TicketEvent): string {
     case "reopened": return `${who} reopened the ticket`;
     case "email_logged": return e.body ?? "Email logged";
     case "email_skipped": return e.body ?? "Email skipped";
+    case "address_update_requested": return `The customer ${e.body?.replace(/^the customer /, "") ?? "asked to change the return address"}`;
     case "watch_received":
     case "parts_requested":
     case "part_sent":

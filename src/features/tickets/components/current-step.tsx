@@ -94,6 +94,7 @@ export async function CurrentStep({ t, grants }: { t: TicketDetail; grants: Gran
           customerEmail={t.customer_email}
           customerPhone={t.customer_phone}
           address={(t.return_address as ReturnAddress | null) ?? null}
+          pendingAddress={(t.pending_return_address as ReturnAddress | null) ?? null}
           requiresPayment={t.requires_payment}
           paymentStatus={t.payment_status as "none" | "invoiced" | "paid"}
           signatureRequired={t.signature_required}
