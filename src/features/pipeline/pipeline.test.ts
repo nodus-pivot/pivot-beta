@@ -28,7 +28,9 @@ describe("canActOn", () => {
   });
   it("brand roles act only on their stages, and only for their brand", () => {
     expect(canActOn(WATCHMAKER, "received", SCOPE)).toBe(true);
-    expect(canActOn(WATCHMAKER, "request_part", SCOPE)).toBe(false);
+    expect(canActOn(WATCHMAKER, "intake", SCOPE)).toBe(true);
+    expect(canActOn(WATCHMAKER, "request_part", SCOPE)).toBe(true);
+    expect(canActOn(WATCHMAKER, "send_return_label", SCOPE)).toBe(false);
     expect(canActOn(OTHER_WATCHMAKER, "received", SCOPE)).toBe(false);
     expect(canActOn(REP, "request_part", SCOPE)).toBe(true);
     expect(canActOn(REP, "in_repair", SCOPE)).toBe(false);

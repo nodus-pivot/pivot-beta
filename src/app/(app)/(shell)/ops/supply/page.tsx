@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { canEditOps, canOpenOpsPage, canSeeCost } from "@/features/auth/permissions";
+import { canEditOps, canOpenOpsPage, canRecordStock, canSeeCost } from "@/features/auth/permissions";
 import { getCurrentUser } from "@/features/auth/queries";
 import { SIGN_IN_PATH } from "@/features/auth/redirect";
 import { PartFormDialog } from "@/features/ops/components/part-form-dialog";
@@ -26,6 +26,7 @@ export default async function SupplyPage() {
     supabase.from("watches").select("id, model").eq("workspace_id", current.id).eq("is_active", true).order("model"),
   ]);
   const canEdit = canEditOps(user.grants, current.id);
+  const canStock = canRecordStock(user.grants, current.id, brandWorkspace);
 
   return (
     <div className="px-10 py-9">
@@ -34,7 +35,8 @@ export default async function SupplyPage() {
           <h1 className="text-[28px]">Supply</h1>
           <p className="mt-1 max-w-[62ch] text-[14.5px] text-text-2">
             Every part {current.name} keeps for repairs. Stock only goes up here, through intake or a received reorder; tickets take it out when a replacement is diagnosed.
-            {!canEdit && " You can look but not change anything."}
+            {!canEdit && canStock && " You can record deliveries, reorders and count corrections; owners handle new parts and costs."}
+            {!canEdit && !canStock && " You can look but not change anything."}
           </p>
         </div>
         {canEdit && <PartFormDialog workspaceId={current.id} />}

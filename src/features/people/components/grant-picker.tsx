@@ -18,7 +18,7 @@ const ROLE_HELP: Record<MemberRole, string> = {
   owner: "Everything, in every workspace. Creates workspaces and grants any role.",
   admin: "Runs one workspace: Ops, settings, and the brand-level people in it.",
   brand_rep: "Intake and parts for one brand; Watches and Supply read-only.",
-  watchmaker: "The bench stages for one brand; Supply read-only, no cost.",
+  watchmaker: "Logs watches in and works every bench stage for one brand; records stock, reorders and corrections in Supply, never sees cost.",
 };
 
 /** Role + where it applies. Field names: {prefix}role, {prefix}workspace_id, {prefix}brand_id. */

@@ -18,7 +18,7 @@ export const STAGE_DEFINITIONS: Record<Stage, StageDefinition> = {
     id: "intake",
     name: "Intake",
     publicName: "Request received",
-    owners: ["brand_rep"],
+    owners: ["brand_rep", "watchmaker"],
     actionLabel: "Create ticket",
   },
   send_return_label: {
@@ -39,7 +39,7 @@ export const STAGE_DEFINITIONS: Record<Stage, StageDefinition> = {
     id: "request_part",
     name: "Request Part",
     publicName: "Getting a part ready for your repair",
-    owners: ["brand_rep"],
+    owners: ["brand_rep", "watchmaker"],
     actionLabel: "All sent",
   },
   in_repair: {

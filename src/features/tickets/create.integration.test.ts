@@ -283,6 +283,20 @@ describe.skipIf(!enabled)("createTicket (integration)", () => {
     await db.from("tickets").update({ pending_return_address: null, pending_return_address_at: null }).eq("ticket_number", "NW260041");
   });
 
+  it("stock functions record intake, adjustment and reorders, and refuse a ticket from elsewhere", async () => {
+    await signIn();
+    const CASETUBE = "a0000000-0000-4000-8000-000000000201";
+    const before = (await db.from("parts_stock").select("stock_qty").eq("part_id", CASETUBE).single()).data?.stock_qty ?? 0;
+    expect((await db.rpc("record_stock_intake", { p_part: CASETUBE, p_qty: 2, p_note: "integration test" })).error).toBeNull();
+    expect((await db.rpc("record_stock_adjustment", { p_part: CASETUBE, p_delta: -2, p_note: "integration test cleanup" })).error).toBeNull();
+    expect((await db.from("parts_stock").select("stock_qty").eq("part_id", CASETUBE).single()).data?.stock_qty).toBe(before);
+    expect((await db.rpc("record_stock_adjustment", { p_part: CASETUBE, p_delta: 1, p_note: "x" })).error).not.toBeNull(); // reason too short
+    const { data: orderId, error: e1 } = await db.rpc("record_part_order", { p_part: CASETUBE, p_qty: 5, p_note: "integration test" });
+    expect(e1).toBeNull();
+    expect((await db.rpc("cancel_part_order", { p_order: orderId as string })).error).toBeNull();
+    expect((await db.from("part_orders").select("id").eq("id", orderId as string)).data).toHaveLength(0);
+  });
+
   it("refuses a watch that isn't sold under the chosen brand", async () => {
     await signIn();
     await expect(

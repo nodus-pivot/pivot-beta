@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { canEditOps } from "@/features/auth/permissions";
+import { canEditOps, canRecordStock } from "@/features/auth/permissions";
 import { getCurrentUser } from "@/features/auth/queries";
 import { SIGN_IN_PATH } from "@/features/auth/redirect";
 import { PartFormDialog } from "@/features/ops/components/part-form-dialog";
 import { RetireButton } from "@/features/ops/components/retire-button";
 import { AdjustDialog, CancelOrderButton, IntakeDialog, ReorderDialog } from "@/features/ops/components/stock-dialogs";
 import { getPartDetail } from "@/features/ops/queries";
+import { getVisibleBrands } from "@/features/workspaces/queries";
 import { STAGE_DEFINITIONS, componentLabel, isLiveStage } from "@/features/pipeline";
 import { formatDate, formatDateTime } from "@/lib/format";
 
@@ -28,9 +29,10 @@ export default async function PartPage({ params }: Params) {
   const { id } = await params;
   const user = await getCurrentUser();
   if (!user) redirect(SIGN_IN_PATH);
-  const part = await getPartDetail(id, user.grants);
+  const [part, brands] = await Promise.all([getPartDetail(id, user.grants), getVisibleBrands()]);
   if (!part) notFound();
   const canEdit = canEditOps(user.grants, part.workspace_id);
+  const canStock = canRecordStock(user.grants, part.workspace_id, (bid) => brands.find((b) => b.id === bid)?.workspace_id);
   const showCost = part.unit_cost !== null || canEdit;
   const low = part.stock <= part.reorder_at;
 
@@ -66,9 +68,9 @@ export default async function PartPage({ params }: Params) {
         {showCost ? <Stat label="Default unit cost" value={part.unit_cost != null ? money.format(part.unit_cost) : "—"} note={part.supplier ?? undefined} /> : <Stat label="On order" value={String(part.on_order_qty)} />}
       </dl>
 
-      {canEdit && (
+      {canStock && (
         <div className="mt-5 flex flex-wrap items-center gap-2">
-          <IntakeDialog part={part} orders={part.open_orders} />
+          <IntakeDialog part={part} orders={part.open_orders} showCost={showCost} />
           <ReorderDialog part={part} />
           <AdjustDialog part={part} tickets={part.tickets} />
         </div>
@@ -87,7 +89,7 @@ export default async function PartPage({ params }: Params) {
                 {o.note && <span className="text-text-3">{o.note}</span>}
                 <span className="ml-auto flex items-center gap-4">
                   <span className="rounded-full bg-amber-bg px-2 text-[11.5px] text-amber">in progress</span>
-                  {canEdit && <CancelOrderButton partId={part.id} orderId={o.id} />}
+                  {canStock && <CancelOrderButton partId={part.id} orderId={o.id} />}
                 </span>
               </li>
             ))}

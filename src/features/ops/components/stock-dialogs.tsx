@@ -12,8 +12,8 @@ type TicketRef = { id: string; ticket_number: string; customer_name: string | nu
 
 const select = `${fieldClass} appearance-none pr-9 bg-[url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='%238A9DB0' stroke-width='1.5'/%3E%3C/svg%3E")] bg-[length:12px] bg-[right_12px_center] bg-no-repeat`;
 
-/** Intake: the only way stock goes up. Naming an open reorder closes it. */
-export function IntakeDialog({ part, orders }: { part: PartRef; orders: OpenOrder[] }) {
+/** Intake: the only way stock goes up. Naming an open reorder closes it. Cost is owner/admin-only. */
+export function IntakeDialog({ part, orders, showCost }: { part: PartRef; orders: OpenOrder[]; showCost: boolean }) {
   return (
     <ActionDialog title="Stock intake" description={`${part.name} arrived. If it's a reorder coming in, pick the order and it closes.`} trigger="Intake" triggerStyle="primary" submitLabel="Add to stock" action={addStockIntake} hidden={{ part_id: part.id }}>
       {(errors) => (
@@ -28,13 +28,15 @@ export function IntakeDialog({ part, orders }: { part: PartRef; orders: OpenOrde
               </select>
             </Field>
           )}
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className={`grid gap-4 ${showCost ? "sm:grid-cols-2" : ""}`}>
             <Field id="in_qty" label="Quantity" error={errors.qty}>
               <input id="in_qty" name="qty" type="number" min={1} inputMode="numeric" required autoFocus className={`${fieldClass} font-mono`} aria-invalid={!!errors.qty || undefined} />
             </Field>
-            <Field id="in_cost" label="Unit cost for this delivery" hint="optional · defaults to the part's default" error={errors.unit_cost}>
-              <input id="in_cost" name="unit_cost" type="number" min={0} step="0.01" inputMode="decimal" defaultValue={part.unit_cost ?? ""} className={`${fieldClass} font-mono`} />
-            </Field>
+            {showCost && (
+              <Field id="in_cost" label="Unit cost for this delivery" hint="optional · defaults to the part's default" error={errors.unit_cost}>
+                <input id="in_cost" name="unit_cost" type="number" min={0} step="0.01" inputMode="decimal" defaultValue={part.unit_cost ?? ""} className={`${fieldClass} font-mono`} />
+              </Field>
+            )}
           </div>
           <Field id="in_note" label="Note" hint="optional">
             <input id="in_note" name="note" className={fieldClass} />

@@ -23,7 +23,7 @@ export default async function NewTicketPage() {
       <p className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-accent-text">Step 1 · Intake</p>
       <h1 className="mt-2 text-[28px]">New ticket</h1>
       <p className="mt-2 max-w-[60ch] text-[14.5px] text-text-2">
-        Enter the customer and the watch, then create the ticket. It lands in Received &amp; Diagnostics for the watchmaker.
+        Enter the customer and the watch, then create the ticket. It lands in Received &amp; Diagnostics.
       </p>
       <div className="mt-10">
         <IntakeForm brands={catalog.brands} watches={catalog.watches} />

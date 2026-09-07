@@ -20,14 +20,19 @@ export function canAdministerWorkspace(grants: Grant[], workspaceId: string): bo
   return isAdminOf(grants, workspaceId);
 }
 
-/** Create tickets: owners, admins of the workspace, or a rep of the brand. */
+/** Create tickets: owners, admins of the workspace, or a rep or watchmaker of the brand (the watchmaker logs walk-ins in). */
 export function canCreateTicket(grants: Grant[], workspaceId: string, brandId: string | null): boolean {
-  return isAdminOf(grants, workspaceId) || (!!brandId && grants.some((g) => g.role === "brand_rep" && g.brand_id === brandId));
+  return isAdminOf(grants, workspaceId) || (!!brandId && grants.some((g) => g.brand_id === brandId));
 }
 
 /** The "+ New ticket" button: anyone who could create a ticket for some brand in the workspace. */
 export function canCreateAnyTicket(grants: Grant[], workspaceId: string): boolean {
-  return isAdminOf(grants, workspaceId) || grants.some((g) => g.role === "brand_rep");
+  return isAdminOf(grants, workspaceId) || grants.some((g) => !!g.brand_id);
+}
+
+/** Record stock movements (intake, reorders, adjustments): owners, admins, and watchmakers in the workspace. Mirrors app.can_record_stock(). */
+export function canRecordStock(grants: Grant[], workspaceId: string, brandWorkspace: (brandId: string) => string | undefined): boolean {
+  return isAdminOf(grants, workspaceId) || grants.some((g) => g.role === "watchmaker" && g.brand_id && brandWorkspace(g.brand_id) === workspaceId);
 }
 
 /** Only brand-level grants, no admin or owner: the bench view of the sidebar. */

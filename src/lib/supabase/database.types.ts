@@ -1139,6 +1139,7 @@ export type Database = {
         Args: { p_display_name: string; p_is_active: boolean; p_user: string }
         Returns: undefined
       }
+      cancel_part_order: { Args: { p_order: string }; Returns: undefined }
       consume_ticket_part: { Args: { p_row: string }; Returns: undefined }
       customer_request_address_update: {
         Args: { p_address: Json; p_email: string; p_ticket_number: string }
@@ -1168,6 +1169,33 @@ export type Database = {
         Args: {
           p_note?: string
           p_order: string
+          p_qty: number
+          p_unit_cost?: number
+        }
+        Returns: undefined
+      }
+      record_part_order: {
+        Args: {
+          p_expected?: string
+          p_note?: string
+          p_part: string
+          p_qty: number
+        }
+        Returns: string
+      }
+      record_stock_adjustment: {
+        Args: {
+          p_delta: number
+          p_note: string
+          p_part: string
+          p_ticket?: string
+        }
+        Returns: undefined
+      }
+      record_stock_intake: {
+        Args: {
+          p_note?: string
+          p_part: string
           p_qty: number
           p_unit_cost?: number
         }

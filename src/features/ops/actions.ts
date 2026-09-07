@@ -3,12 +3,25 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { canEditOps } from "@/features/auth/permissions";
+import { canEditOps, canRecordStock } from "@/features/auth/permissions";
 import { getCurrentUser } from "@/features/auth/queries";
 import { COMPONENTS } from "@/features/pipeline";
 import { createClient } from "@/lib/supabase/server";
 
 export type OpsResult = { ok: true; id?: string } | { ok: false; error: string; fieldErrors?: Record<string, string> };
+
+/** Anyone who may record stock for the part (owner/admin, or a watchmaker it's visible to). */
+async function loadPartForStock(partId: string) {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false as const, error: "You're signed out." };
+  const supabase = await createClient();
+  const { data: part } = await supabase.from("parts_for_bench").select("id, workspace_id, name").eq("id", partId).maybeSingle();
+  if (!part?.id || !part.workspace_id) return { ok: false as const, error: "Part not found." };
+  const { data: brands } = await supabase.from("brands").select("id, workspace_id");
+  const brandWorkspace = (id: string) => brands?.find((b) => b.id === id)?.workspace_id;
+  if (!canRecordStock(user.grants, part.workspace_id, brandWorkspace)) return { ok: false as const, error: "Only owners, admins and the watchmaker record stock." };
+  return { ok: true as const, user, supabase, part: { id: part.id, workspace_id: part.workspace_id, name: part.name ?? "" } };
+}
 
 /** Owner/admin of the part's workspace, and the part exists. */
 async function loadPartForEdit(partId: string) {
@@ -126,25 +139,14 @@ const intakeInput = z.object({
 export async function addStockIntake(_prev: OpsResult | null, fd: FormData): Promise<OpsResult> {
   const parsed = intakeInput.safeParse({ partId: fd.get("part_id"), qty: fd.get("qty") ?? "", unit_cost: fd.get("unit_cost") ?? "", note: fd.get("note") ?? "", order_id: fd.get("order_id") ?? "" });
   if (!parsed.success) return { ok: false, error: "Fix the highlighted fields.", fieldErrors: fieldErrors(parsed.error.issues) };
-  const ctx = await loadPartForEdit(parsed.data.partId);
+  const ctx = await loadPartForStock(parsed.data.partId);
   if (!ctx.ok) return ctx;
-  if (parsed.data.order_id) {
-    const { error } = await ctx.supabase.rpc("receive_part_order", { p_order: parsed.data.order_id, p_qty: parsed.data.qty, p_unit_cost: parsed.data.unit_cost ?? undefined, p_note: parsed.data.note ?? undefined });
-    if (error) return { ok: false, error: error.message };
-    revalidatePath("/ops", "layout");
-    revalidatePath("/service-center", "layout");
-    return { ok: true };
-  }
-  const { error } = await ctx.supabase.from("stock_movements").insert({
-    part_id: parsed.data.partId,
-    qty_delta: parsed.data.qty,
-    reason: "intake",
-    unit_cost_at_time: parsed.data.unit_cost ?? ctx.part.unit_cost,
-    note: parsed.data.note,
-    created_by: ctx.user.id,
-  });
+  const { error } = parsed.data.order_id
+    ? await ctx.supabase.rpc("receive_part_order", { p_order: parsed.data.order_id, p_qty: parsed.data.qty, p_unit_cost: parsed.data.unit_cost ?? undefined, p_note: parsed.data.note ?? undefined })
+    : await ctx.supabase.rpc("record_stock_intake", { p_part: parsed.data.partId, p_qty: parsed.data.qty, p_unit_cost: parsed.data.unit_cost ?? undefined, p_note: parsed.data.note ?? undefined });
   if (error) return { ok: false, error: error.message };
   revalidatePath("/ops", "layout");
+  revalidatePath("/service-center", "layout");
   return { ok: true };
 }
 
@@ -160,22 +162,10 @@ const adjustInput = z.object({
 export async function adjustStock(_prev: OpsResult | null, fd: FormData): Promise<OpsResult> {
   const parsed = adjustInput.safeParse({ partId: fd.get("part_id"), delta: fd.get("delta") ?? "", note: fd.get("note") ?? "", ticket_id: fd.get("ticket_id") ?? "" });
   if (!parsed.success) return { ok: false, error: "Fix the highlighted fields.", fieldErrors: fieldErrors(parsed.error.issues) };
-  const ctx = await loadPartForEdit(parsed.data.partId);
+  const ctx = await loadPartForStock(parsed.data.partId);
   if (!ctx.ok) return ctx;
-  if (parsed.data.ticket_id) {
-    const { data: t } = await ctx.supabase.from("tickets").select("id").eq("id", parsed.data.ticket_id).eq("workspace_id", ctx.part.workspace_id).maybeSingle();
-    if (!t) return { ok: false, error: "That ticket isn't in this workspace.", fieldErrors: { ticket_id: "Pick a ticket from this workspace." } };
-  }
-  const { error } = await ctx.supabase.from("stock_movements").insert({
-    part_id: parsed.data.partId,
-    qty_delta: parsed.data.delta,
-    reason: "adjustment",
-    ticket_id: parsed.data.ticket_id,
-    unit_cost_at_time: ctx.part.unit_cost,
-    note: parsed.data.note,
-    created_by: ctx.user.id,
-  });
-  if (error) return { ok: false, error: error.message };
+  const { error } = await ctx.supabase.rpc("record_stock_adjustment", { p_part: parsed.data.partId, p_delta: parsed.data.delta, p_note: parsed.data.note, p_ticket: parsed.data.ticket_id ?? undefined });
+  if (error) return { ok: false, error: /ticket not in/.test(error.message) ? "That ticket isn't in this workspace." : error.message };
   revalidatePath("/ops", "layout");
   return { ok: true };
 }
@@ -193,9 +183,9 @@ const orderInput = z.object({
 export async function createPartOrder(_prev: OpsResult | null, fd: FormData): Promise<OpsResult> {
   const parsed = orderInput.safeParse({ partId: fd.get("part_id"), qty: fd.get("qty") ?? "", expected_at: fd.get("expected_at") ?? "", note: fd.get("note") ?? "" });
   if (!parsed.success) return { ok: false, error: "Fix the highlighted fields.", fieldErrors: fieldErrors(parsed.error.issues) };
-  const ctx = await loadPartForEdit(parsed.data.partId);
+  const ctx = await loadPartForStock(parsed.data.partId);
   if (!ctx.ok) return ctx;
-  const { error } = await ctx.supabase.from("part_orders").insert({ part_id: parsed.data.partId, qty: parsed.data.qty, expected_at: parsed.data.expected_at, note: parsed.data.note, created_by: ctx.user.id });
+  const { error } = await ctx.supabase.rpc("record_part_order", { p_part: parsed.data.partId, p_qty: parsed.data.qty, p_expected: parsed.data.expected_at ?? undefined, p_note: parsed.data.note ?? undefined });
   if (error) return { ok: false, error: error.message };
   revalidatePath("/ops", "layout");
   revalidatePath("/service-center", "layout");
@@ -203,9 +193,9 @@ export async function createPartOrder(_prev: OpsResult | null, fd: FormData): Pr
 }
 
 export async function cancelPartOrder(raw: { orderId: string; partId: string }): Promise<OpsResult> {
-  const ctx = await loadPartForEdit(raw.partId);
+  const ctx = await loadPartForStock(raw.partId);
   if (!ctx.ok) return ctx;
-  const { error } = await ctx.supabase.from("part_orders").delete().eq("id", raw.orderId).is("received_at", null);
+  const { error } = await ctx.supabase.rpc("cancel_part_order", { p_order: raw.orderId });
   if (error) return { ok: false, error: error.message };
   revalidatePath("/ops", "layout");
   revalidatePath("/service-center", "layout");
