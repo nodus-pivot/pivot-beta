@@ -63,7 +63,12 @@ export default async function ModulePickerPage() {
         </form>
       )}
 
-      <form action={signOut} className="mt-6">
+      <p className="mt-6 text-[13.5px]">
+        <Link href="/account" className="text-accent-text hover:underline">Account</Link>
+        <span className="text-text-3"> · name and password</span>
+      </p>
+
+      <form action={signOut} className="mt-3">
         <button type="submit" className="text-[13.5px] text-text-3 hover:text-text">
           Sign out
         </button>

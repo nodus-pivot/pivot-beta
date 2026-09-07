@@ -25,7 +25,7 @@ export function AppNav({ user, ws, brands }: { user: CurrentUser; ws: WorkspaceC
       <div className="ml-auto flex items-center gap-4">
         {ws.current && <WorkspaceSwitcher key={ws.current.id} workspaces={ws.workspaces} currentId={ws.current.id} />}
         {canUseViewAs(user.realGrants) && <ViewAsControl active={user.viewingAs} workspaces={ws.workspaces} brands={brands} />}
-        <Link href="/home" className="flex items-center gap-2.5 text-[13.5px] text-text-2 hover:text-text">
+        <Link href="/account" className="flex items-center gap-2.5 text-[13.5px] text-text-2 hover:text-text" title="Account">
           <span>
             {user.profile.display_name} · {grantsLabel(user.grants, { workspaces: ws.workspaces, brands })}
           </span>
