@@ -260,27 +260,27 @@ describe.skipIf(!enabled)("createTicket (integration)", () => {
 
   it("customers can look up a ticket with number + email, and request an address change", async () => {
     const anon = createClient<Database>(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-    const { data: found, error } = await anon.rpc("customer_ticket_status", { p_ticket_number: " nw260041 ", p_email: "MARIA@example.com" });
+    const { data: found, error } = await anon.rpc("customer_ticket_status", { p_ticket_number: " nw260002 ", p_email: "MARIA@example.com" });
     expect(error).toBeNull();
     const view = found as Record<string, unknown> | null;
-    expect(view?.ticket_number).toBe("NW260041");
+    expect(view?.ticket_number).toBe("NW260002");
     expect(view?.customer_first_name).toBe("Maria");
     expect(Object.keys(view ?? {})).not.toContain("intake_notes");
     expect(Object.keys(view ?? {})).not.toContain("customer_email");
     // Wrong email: nothing, not even that the ticket exists.
-    const { data: miss } = await anon.rpc("customer_ticket_status", { p_ticket_number: "NW260041", p_email: "someone@else.com" });
+    const { data: miss } = await anon.rpc("customer_ticket_status", { p_ticket_number: "NW260002", p_email: "someone@else.com" });
     expect(miss).toBeNull();
     // Address change lands as a pending request the staff review.
-    const { data: ok } = await anon.rpc("customer_request_address_update", { p_ticket_number: "NW260041", p_email: "maria@example.com", p_address: { line1: "1 Test St", city: "Austin", state: "TX", postal_code: "78701", country: "United States" } });
+    const { data: ok } = await anon.rpc("customer_request_address_update", { p_ticket_number: "NW260002", p_email: "maria@example.com", p_address: { line1: "1 Test St", city: "Austin", state: "TX", postal_code: "78701", country: "United States" } });
     expect(ok).toBe(true);
     await signIn();
-    const { data: t } = await db.from("tickets").select("pending_return_address").eq("ticket_number", "NW260041").single();
+    const { data: t } = await db.from("tickets").select("pending_return_address").eq("ticket_number", "NW260002").single();
     expect((t?.pending_return_address as { line1?: string } | null)?.line1).toBe("1 Test St");
     // Anon can't read the table directly.
-    const { data: direct } = await anon.from("tickets").select("id").eq("ticket_number", "NW260041");
+    const { data: direct } = await anon.from("tickets").select("id").eq("ticket_number", "NW260002");
     expect(direct ?? []).toHaveLength(0);
     // Tidy: clear the request on the demo ticket.
-    await db.from("tickets").update({ pending_return_address: null, pending_return_address_at: null }).eq("ticket_number", "NW260041");
+    await db.from("tickets").update({ pending_return_address: null, pending_return_address_at: null }).eq("ticket_number", "NW260002");
   });
 
   it("stock functions record intake, adjustment and reorders, and refuse a ticket from elsewhere", async () => {

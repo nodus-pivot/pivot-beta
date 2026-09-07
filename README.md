@@ -19,8 +19,7 @@ This is the rebuild of the single-file Pivot app. The schema and role model are 
 3. `npx supabase login` once, then link this checkout to the dev project:
    `npx supabase link --project-ref <project-ref>`
 4. Apply migrations to the dev project: `npx supabase db push`
-5. Seed the two workspaces and three brands: `npx supabase db query --file supabase/seed.sql`
-   (or paste `supabase/seed.sql` into the SQL editor)
+5. Seed demo data: `npx supabase db query --file supabase/seed.sql` (generated from `supabase/seed.py`; re-run it any time to reset the demo tickets, stock and demo people)
 6. `npm run dev` and open http://localhost:3000
 
 ## Schema changes
@@ -51,3 +50,16 @@ There is no self-signup. A workspace admin adds people on Settings → Users; si
 
 `npm test` runs the unit tests (pipeline rules, ticket numbering, sign-in schema).
 `npm run test:integration` creates and deletes a real ticket on the linked dev project as the dev admin; it needs `.env.local`, `.dev-admin-password`, and Node 22+.
+
+## Demo sign-ins
+
+The seed creates one account per role, all with the password `PivotDemo2026!!` (re-running the seed resets it):
+
+| Email | Access |
+|---|---|
+| owner.demo@pivot.test | Owner |
+| cullen.demo@pivot.test | Owner |
+| rane.demo@pivot.test | Watchmaker · Nodus, Sangin, Awake |
+| nodus.rep.demo@pivot.test | Brand rep · Nodus |
+| sangin.rep.demo@pivot.test | Brand rep · Sangin |
+| connexus.admin.demo@pivot.test | Admin · Connexus |
