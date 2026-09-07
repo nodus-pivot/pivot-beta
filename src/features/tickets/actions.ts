@@ -588,3 +588,53 @@ export async function updateCustomer(_prev: CustomerState, fd: FormData): Promis
   revalidatePath("/service-center", "layout");
   return { saved: true };
 }
+
+/* ---------------------------------------------------------------- intake stage (1a, ticket already exists) */
+
+const intakeStageInput = z.object({
+  ticketId: z.uuid(),
+  customer_name: z.string().trim().min(1).max(200),
+  customer_email: z.string().trim().toLowerCase().pipe(z.email()),
+  customer_phone: z.string().trim().max(50).transform((v) => v || null),
+  watch_id: z.uuid(),
+  watch_serial: z.string().trim().max(100).transform((v) => v || null),
+  issue_description: z.string().trim().max(5000).transform((v) => v || null),
+  return_address: returnAddressSchema,
+  requires_payment: z.boolean(),
+  priority: z.boolean(),
+});
+
+/** Autosave for a ticket sitting at Intake (a website submission, or a ticket sent back). Whole-state. */
+export async function saveIntake(raw: z.input<typeof intakeStageInput>): Promise<SaveResult> {
+  const parsed = intakeStageInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Some of that didn't look right." };
+  const input = parsed.data;
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "You're signed out." };
+  const supabase = await createClient();
+  const { data: t } = await supabase.from("tickets").select("stage, workspace_id, brand_id, watch_id").eq("id", input.ticketId).maybeSingle();
+  if (!t) return { ok: false, error: "Ticket not found." };
+  if (!canActOn(user.grants, "intake", scopeOf(t))) return { ok: false, error: "Only owners, admins, the brand rep or the watchmaker edit intake." };
+  if (t.stage !== "intake") return { ok: false, error: "This ticket has moved on; reload the page." };
+  if (input.watch_id !== t.watch_id) {
+    const { data: fit } = await supabase.from("watch_brands").select("watch_id").eq("watch_id", input.watch_id).eq("brand_id", t.brand_id).maybeSingle();
+    if (!fit) return { ok: false, error: "That watch isn't sold under this ticket's brand." };
+  }
+  const { error } = await supabase
+    .from("tickets")
+    .update({
+      customer_name: input.customer_name,
+      customer_email: input.customer_email,
+      customer_phone: input.customer_phone,
+      watch_id: input.watch_id,
+      watch_serial: input.watch_serial,
+      issue_description: input.issue_description,
+      return_address: input.return_address,
+      requires_payment: input.requires_payment,
+      priority: input.priority,
+    })
+    .eq("id", input.ticketId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/service-center", "layout");
+  return { ok: true };
+}

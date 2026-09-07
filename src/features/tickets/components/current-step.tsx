@@ -2,9 +2,11 @@ import { STAGE_DEFINITIONS, canActOn, isLiveStage, type Grant } from "@/features
 import { asCategories, asChecks, asConditions, type TicketDetail } from "../detail";
 import type { ReturnAddress } from "../schema";
 import { getPartsForWatch, getPartsStock } from "../queries";
+import { createClient } from "@/lib/supabase/server";
 import { addressLines, getWorkspaceContext, type Address } from "@/features/workspaces/queries";
 import { ClosedSummary } from "./closed-summary";
 import { InRepairForm } from "./in-repair-form";
+import { IntakeStageForm } from "./intake-stage-form";
 import { ReceivedForm } from "./received-form";
 import { RequestPartForm } from "./request-part-form";
 import { ReturnHomeForm } from "./return-home-form";
@@ -16,6 +18,31 @@ export async function CurrentStep({ t, grants }: { t: TicketDetail; grants: Gran
   const canEdit = canActOn(grants, t.stage, { workspaceId: t.workspace_id, brandId: t.brand_id });
 
   switch (t.stage) {
+    case "intake": {
+      const supabase = await createClient();
+      const { data: fits } = await supabase.from("watch_brands").select("watches(id, model, reference)").eq("brand_id", t.brand_id);
+      const watches = (fits ?? []).flatMap((f) => (f.watches && f.watches.id ? [{ id: f.watches.id, model: f.watches.model, reference: f.watches.reference }] : [])).sort((a, b) => a.model.localeCompare(b.model));
+      return (
+        <IntakeStageForm
+          ticketId={t.id}
+          canEdit={canEdit}
+          brandName={t.brand.name}
+          watches={watches}
+          origin={t.customer_watch_description ? "website" : "staff"}
+          values={{
+            customer_name: t.customer_name ?? "",
+            customer_email: t.customer_email ?? "",
+            customer_phone: t.customer_phone ?? "",
+            watch_id: t.watch_id,
+            watch_serial: t.watch_serial ?? "",
+            issue_description: t.issue_description ?? "",
+            return_address: (t.return_address as ReturnAddress | null) ?? null,
+            requires_payment: t.requires_payment,
+            priority: t.priority,
+          }}
+        />
+      );
+    }
     case "received": {
       const catalogParts = await getPartsForWatch(t.watch_id);
       return (

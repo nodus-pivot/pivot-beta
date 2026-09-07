@@ -19,7 +19,7 @@ export const STAGE_DEFINITIONS: Record<Stage, StageDefinition> = {
     name: "Intake",
     publicName: "Request received",
     owners: ["brand_rep", "watchmaker"],
-    actionLabel: "Create ticket",
+    actionLabel: "Confirm intake",
   },
   send_return_label: {
     id: "send_return_label",
