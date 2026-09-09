@@ -142,61 +142,87 @@ export function InRepairForm(p: Props) {
     const variants = x.action === "replace" ? VARIANTS[x.component] : undefined;
     const fits = p.catalogParts.filter((c) => c.component === x.component);
     const part = p.parts.find((r) => r.component === x.component);
+    const pickedPart = x.action === "replace" ? (fits.length === 1 ? fits[0] : fits.find((c) => c.id === x.part_id)) : undefined;
+    const partLine = x.action === "replace"
+      ? [pickedPart ? `${pickedPart.name} · ${pickedPart.sku}` : x.part_name ? `${x.part_name} · not in catalog` : fits.length > 1 ? "part not chosen yet" : null, part?.sent_at ? `shipped ${formatDate(part.sent_at)}` : null].filter(Boolean)
+      : [];
+    const locked = dis || x.done;
+    const summary = [x.action ? ACTION_LABELS[x.action] : "no action", x.variant].filter(Boolean).join(" · ");
+
     return (
-      <li key={x.component} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-2.5">
-        <span className="flex w-[130px] items-center gap-2 text-[15px]">
-          {x.done && <Check size={14} weight="bold" className="flex-none text-green" />}
-          <span>{COMPONENT_LABELS[x.component]}</span>
-        </span>
-        <span className={`flex gap-1.5 ${x.done ? "opacity-60" : ""}`}>
-          {actionsFor(x.component).map((a) => (
-            <button key={a} type="button" disabled={dis || x.done} aria-pressed={x.action === a} onClick={() => setAction(x, x.action === a ? null : a)} className={pill(x.action === a, dis || x.done, "sm")}>
-              {ACTION_LABELS[a]}
-            </button>
-          ))}
-        </span>
-        {x.action === "replace" && fits.length > 1 && (
-          <select
-            value={x.part_id ?? ""}
-            disabled={dis || x.done}
-            onChange={(e) => patchRow(x.component, { part_id: e.target.value || null, part_name: null })}
-            aria-label={`Which ${COMPONENT_LABELS[x.component]} part`}
-            className="h-7 rounded-lg border border-border-strong bg-transparent px-2 text-[12.5px] text-text focus:border-accent focus:outline-none"
-          >
-            <option value="">Which part?</option>
-            {fits.map((c) => (
-              <option key={c.id} value={c.id}>{c.name} · {c.sku}</option>
-            ))}
-          </select>
-        )}
-        {x.action === "replace" && fits.length === 1 && (
-          <span className="text-[12.5px] text-text-3">
-            {fits[0].name} <span className="font-mono">{fits[0].sku}</span>
-          </span>
-        )}
-        {x.action === "replace" && fits.length === 0 && (
-          <input
-            value={x.part_name ?? ""}
-            disabled={dis || x.done}
-            placeholder="Part name (not in catalog)"
-            aria-label={`${COMPONENT_LABELS[x.component]} part name`}
-            onChange={(e) => setRows((rs) => rs.map((r) => (r.component === x.component ? { ...r, part_name: e.target.value } : r)))}
-            onBlur={(e) => patchRow(x.component, { part_name: e.target.value.trim() || null })}
-            className="h-7 w-48 rounded-lg border border-border-strong bg-transparent px-2 text-[12.5px] text-text placeholder:text-text-3 focus:border-accent focus:outline-none"
-          />
-        )}
-        {x.action === "replace" && part?.sent_at && <span className="text-[12.5px] text-green">shipped {formatDate(part.sent_at)}</span>}
-        {variants && (
-          <span className="flex items-center gap-1.5">
-            <span className="text-[13px] text-text-3">{x.component === "movement" ? "Which movement?" : "Which material?"}</span>
-            {variants.map((v) => (
-              <button key={v} type="button" disabled={dis || x.done} aria-pressed={x.variant === v} onClick={() => patchRow(x.component, { variant: v })} className={pill(x.variant === v, dis || x.done, "sm")}>
-                {v}
-              </button>
-            ))}
-          </span>
-        )}
-        <span className="ml-auto flex items-center gap-3">
+      <li key={x.component} className="grid grid-cols-[minmax(180px,1fr)_minmax(0,2fr)_auto] items-start gap-x-6 gap-y-2 py-3 max-sm:grid-cols-[1fr_auto]">
+        {/* what */}
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 text-[15px] font-medium">
+            {x.done && <Check size={14} weight="bold" className="flex-none text-green" />}
+            {COMPONENT_LABELS[x.component]}
+          </p>
+          {partLine.length > 0 && (
+            <p className="mt-0.5 text-[12.5px] text-text-3">
+              {partLine.map((l, i) => (
+                <span key={i} className={l?.startsWith("shipped") ? "text-green" : undefined}>
+                  {i > 0 && " · "}
+                  {l}
+                </span>
+              ))}
+            </p>
+          )}
+        </div>
+
+        {/* the decision */}
+        <div className="min-w-0 max-sm:col-span-2 max-sm:order-last">
+          {x.done ? (
+            <p className="text-[13.5px] text-text-2">{summary}</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <div className="inline-flex w-fit rounded-lg border border-border-strong p-0.5">
+                {actionsFor(x.component).map((a) => (
+                  <button key={a} type="button" disabled={locked} aria-pressed={x.action === a} onClick={() => setAction(x, x.action === a ? null : a)} className={`rounded-md px-2.5 py-1 text-[12.5px] transition-colors ${x.action === a ? "bg-accent-900 text-accent-text" : "text-text-2 hover:text-text"} disabled:opacity-50`}>
+                    {ACTION_LABELS[a]}
+                  </button>
+                ))}
+              </div>
+              {variants && (
+                <div className="flex flex-wrap items-center gap-1.5 text-[12.5px]">
+                  <span className="text-text-3">{x.component === "movement" ? "Movement:" : "Material:"}</span>
+                  {variants.map((v) => (
+                    <button key={v} type="button" disabled={locked} aria-pressed={x.variant === v} onClick={() => patchRow(x.component, { variant: v })} className={pill(x.variant === v, locked, "sm")}>
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {x.action === "replace" && fits.length > 1 && (
+                <select
+                  value={x.part_id ?? ""}
+                  disabled={locked}
+                  onChange={(e) => patchRow(x.component, { part_id: e.target.value || null, part_name: null })}
+                  aria-label={`Which ${COMPONENT_LABELS[x.component]} part`}
+                  className="h-7 w-fit rounded-lg border border-border-strong bg-transparent px-2 text-[12.5px] text-text focus:border-accent focus:outline-none"
+                >
+                  <option value="">Which part?</option>
+                  {fits.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name} · {c.sku}</option>
+                  ))}
+                </select>
+              )}
+              {x.action === "replace" && fits.length === 0 && (
+                <input
+                  value={x.part_name ?? ""}
+                  disabled={locked}
+                  placeholder="Part name (not in catalog)"
+                  aria-label={`${COMPONENT_LABELS[x.component]} part name`}
+                  onChange={(e) => setRows((rs) => rs.map((r) => (r.component === x.component ? { ...r, part_name: e.target.value } : r)))}
+                  onBlur={(e) => patchRow(x.component, { part_name: e.target.value.trim() || null })}
+                  className="h-7 w-56 rounded-lg border border-border-strong bg-transparent px-2 text-[12.5px] text-text placeholder:text-text-3 focus:border-accent focus:outline-none"
+                />
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* status */}
+        <div className="flex items-center gap-3 justify-self-end">
           {x.done ? (
             <button
               type="button"
@@ -221,9 +247,8 @@ export function InRepairForm(p: Props) {
           <button type="button" disabled={dis} onClick={() => toggleComponent(x.component)} aria-label={`Remove ${COMPONENT_LABELS[x.component]}`} className="text-text-3 hover:text-text disabled:opacity-50">
             <X size={14} />
           </button>
-        </span>
+        </div>
       </li>
-
     );
   }
 
