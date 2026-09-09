@@ -58,16 +58,16 @@ describe("missingFor", () => {
   it("every stage after intake needs an email on file", () => {
     expect(missingFor(blankTicket({ stage: "testing", customer_email: "" }))).toContain("customer email");
   });
-      it("in repair needs completion, components, actions, and variants for replaced movements or inserts", () => {
+      it("in repair needs completion, components, actions, and a part for each replacement", () => {
     const t = blankTicket({
       stage: "in_repair",
       repair_categories: [
-        { component: "movement", action: "replace" },
-        { component: "bezel_insert", action: "replace", variant: "ceramic" },
+        { component: "movement", action: "replace", has_part: false },
+        { component: "bezel_insert", action: "replace", has_part: true },
         { component: "crystal" },
       ],
     });
-    expect(missingFor(t)).toEqual(["repair complete", "action for crystal", "which movement"]);
+    expect(missingFor(t)).toEqual(["repair complete", "action for crystal", "part for movement"]);
     const ok = blankTicket({
       stage: "in_repair",
       repair_complete: true,

@@ -10,7 +10,7 @@ import type { Database } from "@/lib/supabase/database.types";
 import { getWorkspaceContext } from "@/features/workspaces/queries";
 import { createClient } from "@/lib/supabase/server";
 import { CreateTicketError, createTicket } from "./create";
-import { asCategories, toPipelineTicket } from "./detail";
+import { toPipelineTicket } from "./detail";
 import { getPartsForWatch, getTicketDetail } from "./queries";
 import { applyTransition } from "./transition";
 import { CARRIERS, createTicketSchema, intakeFormToInput, returnAddressSchema } from "./schema";
@@ -204,12 +204,10 @@ export async function saveReceived(raw: z.input<typeof receivedInput>): Promise<
   if (!canActOn(user.grants, "received", scopeOf(t))) return { ok: false, error: "Only the watchmaker edits this step." };
   if (t.stage !== "received") return { ok: false, error: "This ticket has moved on; reload the page." };
 
-  // Keep variants already chosen for a component (In repair may have set one before a send-back).
-  const existing = new Map(asCategories(t.repair_categories).map((c) => [c.component, c]));
   const intake = input.rows.filter((r) => r.conditions.length > 0).map((r) => ({ component: r.component, conditions: r.conditions }));
   const categories = input.rows
     .filter((r) => r.action)
-    .map((r) => ({ component: r.component, action: r.action!, planned: true, ...(existing.get(r.component)?.variant ? { variant: existing.get(r.component)!.variant } : {}) }));
+    .map((r) => ({ component: r.component, action: r.action!, planned: true, ...(r.action === "replace" ? { has_part: !!(r.part_id || r.part_name) } : {}) }));
 
   const receivedAt = input.received ? (t.watch_received_at ?? new Date().toISOString()) : null;
   const { error } = await supabase
@@ -303,7 +301,7 @@ export async function saveInRepair(raw: z.input<typeof repairInput>): Promise<Sa
   const categories = input.rows.map((r) => ({
     component: r.component,
     ...(r.action ? { action: r.action } : {}),
-    ...(r.variant ? { variant: r.variant } : {}),
+    ...(r.action === "replace" ? { has_part: !!(r.part_id || r.part_name) } : {}),
     ...(r.planned ? { planned: true } : {}),
     ...(r.done ? { done: true, done_at: r.done_at ?? new Date().toISOString() } : {}),
   }));

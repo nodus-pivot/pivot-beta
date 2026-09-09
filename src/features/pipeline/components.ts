@@ -24,12 +24,6 @@ export function componentLabel(c: string): string {
   return (COMPONENT_LABELS as Record<string, string>)[c] ?? c;
 }
 
-/** Replace variants that decide the price (design 1e). */
-export const VARIANTS: Partial<Record<Component, readonly string[]>> = {
-  movement: ["NH", "Miyota", "LJP"],
-  bezel_insert: ["Steel-Alu", "Ceramic", "Glass"],
-};
-
 export const ACTION_LABELS = { repair: "Repair", replace: "Replace", regulate: "Regulate" } as const;
 
 /**

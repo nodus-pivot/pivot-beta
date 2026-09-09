@@ -7,12 +7,6 @@ export type GateOptions = {
   isAdmin?: boolean;
 };
 
-/** Components whose Replace action needs a variant, and how to ask for it. */
-const VARIANT_REQUIRED: Record<string, string> = {
-  movement: "which movement",
-  bezel_insert: "which bezel material",
-};
-
 /**
  * What still has to be done before the ticket can leave its current stage.
  * Empty means it may advance. Each string is short enough to render as
@@ -56,10 +50,9 @@ export function missingFor(ticket: PipelineTicket, opts: GateOptions = {}): stri
       if (cats.length === 0) missing.push("at least one component");
       const noAction = cats.filter((c) => !c.action).map((c) => c.component);
       if (noAction.length > 0) missing.push(`action for ${noAction.join(", ")}`);
-      const noVariant = cats
-        .filter((c) => c.action === "replace" && VARIANT_REQUIRED[c.component] && !c.variant)
-        .map((c) => VARIANT_REQUIRED[c.component]);
-      if (noVariant.length > 0) missing.push(...noVariant);
+      // A replacement needs to say which part went in; the catalog part carries material/movement.
+      const noPart = cats.filter((c) => c.action === "replace" && c.has_part === false).map((c) => `part for ${c.component}`);
+      if (noPart.length > 0) missing.push(...noPart);
       break;
     }
 

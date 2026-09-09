@@ -263,7 +263,6 @@ PLAN = {
     "closed2":      {"replace": ["lume"], "repair": ["hands"]},
 }
 CONDITIONS = {"bezel_insert": ["Cracked"], "dial": ["Scratches"], "crown_tube": ["Cracked"], "movement": [], "case": ["Scratches"], "gaskets": [], "crystal": ["Discolored"], "clasp": ["Lightly worn"], "lume": ["Discolored"], "hands": ["Lightly worn"]}
-VARIANT = {"bezel_insert": "Ceramic", "movement": "NH"}
 
 def part_for(watch: int, component: str) -> tuple[int, str, str] | None:
     """The first catalog part of this component that fits the watch."""
@@ -304,7 +303,7 @@ for prefix, ws, brand, watches, rep, base, customers in BRANDS:
         received_days = created_days - 1 if reached >= 1 else None
         intake = [{"component": c, "conditions": CONDITIONS.get(c, ["Lightly worn"]) or ["Lightly worn"]} for c in plan["replace"] + plan["repair"]] if reached >= 1 else []
         done = reached >= 4  # testing and later: the plan was carried out
-        cats = [{"component": c, "action": "replace", "planned": True, **({"done": True} if done else {}), **({"variant": VARIANT[c]} if c in VARIANT else {})} for c in plan["replace"]] + [{"component": c, "action": "repair" if c != "movement" else "regulate", "planned": True, **({"done": True} if done else {})} for c in plan["repair"]]
+        cats = [{"component": c, "action": "replace", "planned": True, **({"done": True} if done else {}), "has_part": True} for c in plan["replace"]] + [{"component": c, "action": "repair" if c != "movement" else "regulate", "planned": True, **({"done": True} if done else {})} for c in plan["repair"]]
         cats = cats if reached >= 1 else []
         repair_complete = reached >= 4
         checks = {"timekeeping": reached >= 5, "water_resistance": reached >= 5, "visual": reached >= 5} if reached >= 4 else {"timekeeping": reached >= 4, "water_resistance": False, "visual": False}

@@ -45,7 +45,17 @@ export type IntakeCondition = { component: string; conditions: string[] };
  * the diagnosis; `done` is ticked in In repair. Rows added in In repair are
  * unplanned ("also done").
  */
-export type RepairCategory = { component: string; action?: RepairAction; variant?: string; planned?: boolean; done?: boolean; done_at?: string };
+export type RepairCategory = {
+  component: string;
+  action?: RepairAction;
+  /** Legacy from the old app's price sheet; the catalog part carries this now. */
+  variant?: string;
+  /** A Replace row has a part chosen (catalog or free text). */
+  has_part?: boolean;
+  planned?: boolean;
+  done?: boolean;
+  done_at?: string;
+};
 
 export type TestingChecks = { timekeeping: boolean; water_resistance: boolean; visual: boolean };
 

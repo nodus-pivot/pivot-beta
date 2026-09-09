@@ -7,7 +7,6 @@ import {
   ACTION_LABELS,
   COMPONENTS,
   COMPONENT_LABELS,
-  VARIANTS,
   type Component,
   type RepairAction,
   type RepairCategory,
@@ -124,7 +123,7 @@ export function InRepairForm(p: Props) {
           ? x
           : action === "replace"
             ? { ...x, action, part_id: x.part_id ?? (fits.length === 1 ? fits[0].id : null), part_name: fits.length === 0 ? x.part_name : null }
-            : { ...x, action, variant: null, part_id: null, part_name: null },
+            : { ...x, action, part_id: null, part_name: null },
       ),
     );
   }
@@ -139,7 +138,6 @@ export function InRepairForm(p: Props) {
   const doneCount = rows.filter((r) => r.done).length;
 
   function renderRow(x: Row) {
-    const variants = x.action === "replace" ? VARIANTS[x.component] : undefined;
     const fits = p.catalogParts.filter((c) => c.component === x.component);
     const part = p.parts.find((r) => r.component === x.component);
     const pickedPart = x.action === "replace" ? (fits.length === 1 ? fits[0] : fits.find((c) => c.id === x.part_id)) : undefined;
@@ -147,7 +145,7 @@ export function InRepairForm(p: Props) {
       ? [pickedPart ? `${pickedPart.name} · ${pickedPart.sku}` : x.part_name ? `${x.part_name} · not in catalog` : fits.length > 1 ? "part not chosen yet" : null, part?.sent_at ? `shipped ${formatDate(part.sent_at)}` : null].filter(Boolean)
       : [];
     const locked = dis || x.done;
-    const summary = [x.action ? ACTION_LABELS[x.action] : "no action", x.variant].filter(Boolean).join(" · ");
+    const summary = x.action ? ACTION_LABELS[x.action] : "no action";
 
     return (
       <li key={x.component} className="grid grid-cols-[minmax(180px,1fr)_minmax(0,2fr)_auto] items-start gap-x-6 gap-y-2 py-3 max-sm:grid-cols-[1fr_auto]">
@@ -182,16 +180,6 @@ export function InRepairForm(p: Props) {
                   </button>
                 ))}
               </div>
-              {variants && (
-                <div className="flex flex-wrap items-center gap-1.5 text-[12.5px]">
-                  <span className="text-text-3">{x.component === "movement" ? "Movement:" : "Material:"}</span>
-                  {variants.map((v) => (
-                    <button key={v} type="button" disabled={locked} aria-pressed={x.variant === v} onClick={() => patchRow(x.component, { variant: v })} className={pill(x.variant === v, locked, "sm")}>
-                      {v}
-                    </button>
-                  ))}
-                </div>
-              )}
               {x.action === "replace" && fits.length > 1 && (
                 <select
                   value={x.part_id ?? ""}
@@ -297,7 +285,7 @@ export function InRepairForm(p: Props) {
         {rows.length === 0 && <p className="mt-3 text-[13.5px] text-text-3">Nothing planned. Tap a component above to record work.</p>}
         {replacing.length > 0 && (
           <p className="mt-3 text-[13px] text-text-3">
-            Replacing {replacing.map((r) => COMPONENT_LABELS[r.component]).join(", ")}. Each replacement with a catalog part takes one unit out of stock; unpicking it puts the unit back.
+            Replacing {replacing.map((r) => COMPONENT_LABELS[r.component]).join(", ")}. Each replacement takes one unit of its catalog part out of stock; unpicking it puts the unit back.
           </p>
         )}
       </div>
