@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Plus, X } from "@phosphor-icons/react";
+import { Check, Plus, X } from "@phosphor-icons/react";
 import {
   ACTION_LABELS,
   COMPONENTS,
@@ -19,7 +19,7 @@ type CatalogPart = { id: string; name: string; sku: string; component: string };
 type PartRow = { id: string; part_id: string | null; name: string; sku: string | null; component: string | null; sent_at: string | null; consumed: boolean };
 
 /** One row of Work performed: the diagnosis row plus its part, if replacing. Planned rows came from the diagnosis; done is ticked here. */
-type Row = { component: Component; action: RepairAction | null; variant: string | null; part_id: string | null; part_name: string | null; planned: boolean; done: boolean };
+type Row = { component: Component; action: RepairAction | null; variant: string | null; part_id: string | null; part_name: string | null; planned: boolean; done: boolean; done_at: string | null };
 
 type Props = {
   ticketId: string;
@@ -58,6 +58,7 @@ function buildRows(p: Props): Row[] {
         part_name: c.action === "replace" && part && !part.part_id ? part.name : null,
         planned: c.planned === true,
         done: c.done === true,
+        done_at: c.done_at ?? null,
       };
     });
 }
@@ -88,7 +89,7 @@ export function InRepairForm(p: Props) {
     start(async () => {
       const r = await saveInRepair({
         ticketId: p.ticketId,
-        rows: s.rows,
+        rows: s.rows.map((r) => ({ ...r, done_at: r.done_at ?? undefined })),
         solution_notes: s.notes.trim() || null,
         time_spent_minutes: s.minutes.trim() === "" ? null : Math.max(0, Math.round(Number(s.minutes))),
         coverage: s.coverage,
@@ -110,10 +111,10 @@ export function InRepairForm(p: Props) {
   }
   // Adding a component here means it was found and done on the bench: unplanned, done.
   function toggleComponent(c: Component) {
-    setRowsAndSave(rows.some((x) => x.component === c) ? rows.filter((x) => x.component !== c) : [...rows, { component: c, action: null, variant: null, part_id: null, part_name: null, planned: false, done: true }]);
+    setRowsAndSave(rows.some((x) => x.component === c) ? rows.filter((x) => x.component !== c) : [...rows, { component: c, action: null, variant: null, part_id: null, part_name: null, planned: false, done: true, done_at: new Date().toISOString() }]);
   }
   function setDone(component: Component, done: boolean) {
-    setRowsAndSave(rows.map((x) => (x.component === component ? { ...x, done } : x)));
+    setRowsAndSave(rows.map((x) => (x.component === component ? { ...x, done, done_at: done ? new Date().toISOString() : null } : x)));
   }
   function setAction(row: Row, action: RepairAction | null) {
     const fits = p.catalogParts.filter((c) => c.component === row.component);
@@ -142,14 +143,14 @@ export function InRepairForm(p: Props) {
     const fits = p.catalogParts.filter((c) => c.component === x.component);
     const part = p.parts.find((r) => r.component === x.component);
     return (
-      <li key={x.component} className={`flex flex-wrap items-center gap-x-4 gap-y-2 py-2.5 ${x.done ? "" : "opacity-90"}`}>
-        <label className="flex w-[150px] items-center gap-2.5 text-[15px]">
-          <input type="checkbox" checked={x.done} disabled={dis} onChange={(e) => setDone(x.component, e.target.checked)} aria-label={`${COMPONENT_LABELS[x.component]} done`} className="h-4 w-4 accent-[var(--pivot-accent)]" />
-          <span className={x.done ? "" : "text-text-2"}>{COMPONENT_LABELS[x.component]}</span>
-        </label>
-        <span className="flex gap-1.5">
+      <li key={x.component} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-2.5">
+        <span className="flex w-[130px] items-center gap-2 text-[15px]">
+          {x.done && <Check size={14} weight="bold" className="flex-none text-green" />}
+          <span>{COMPONENT_LABELS[x.component]}</span>
+        </span>
+        <span className={`flex gap-1.5 ${x.done ? "opacity-60" : ""}`}>
           {actionsFor(x.component).map((a) => (
-            <button key={a} type="button" disabled={dis} aria-pressed={x.action === a} onClick={() => setAction(x, x.action === a ? null : a)} className={pill(x.action === a, dis, "sm")}>
+            <button key={a} type="button" disabled={dis || x.done} aria-pressed={x.action === a} onClick={() => setAction(x, x.action === a ? null : a)} className={pill(x.action === a, dis || x.done, "sm")}>
               {ACTION_LABELS[a]}
             </button>
           ))}
@@ -157,7 +158,7 @@ export function InRepairForm(p: Props) {
         {x.action === "replace" && fits.length > 1 && (
           <select
             value={x.part_id ?? ""}
-            disabled={dis}
+            disabled={dis || x.done}
             onChange={(e) => patchRow(x.component, { part_id: e.target.value || null, part_name: null })}
             aria-label={`Which ${COMPONENT_LABELS[x.component]} part`}
             className="h-7 rounded-lg border border-border-strong bg-transparent px-2 text-[12.5px] text-text focus:border-accent focus:outline-none"
@@ -176,7 +177,7 @@ export function InRepairForm(p: Props) {
         {x.action === "replace" && fits.length === 0 && (
           <input
             value={x.part_name ?? ""}
-            disabled={dis}
+            disabled={dis || x.done}
             placeholder="Part name (not in catalog)"
             aria-label={`${COMPONENT_LABELS[x.component]} part name`}
             onChange={(e) => setRows((rs) => rs.map((r) => (r.component === x.component ? { ...r, part_name: e.target.value } : r)))}
@@ -189,16 +190,39 @@ export function InRepairForm(p: Props) {
           <span className="flex items-center gap-1.5">
             <span className="text-[13px] text-text-3">{x.component === "movement" ? "Which movement?" : "Which material?"}</span>
             {variants.map((v) => (
-              <button key={v} type="button" disabled={dis} aria-pressed={x.variant === v} onClick={() => patchRow(x.component, { variant: v })} className={pill(x.variant === v, dis, "sm")}>
+              <button key={v} type="button" disabled={dis || x.done} aria-pressed={x.variant === v} onClick={() => patchRow(x.component, { variant: v })} className={pill(x.variant === v, dis || x.done, "sm")}>
                 {v}
               </button>
             ))}
           </span>
         )}
-        <button type="button" disabled={dis} onClick={() => toggleComponent(x.component)} aria-label={`Remove ${COMPONENT_LABELS[x.component]}`} className="ml-auto text-text-3 hover:text-text disabled:opacity-50">
-          <X size={14} />
-        </button>
-                </li>
+        <span className="ml-auto flex items-center gap-3">
+          {x.done ? (
+            <button
+              type="button"
+              disabled={dis}
+              onClick={() => setDone(x.component, false)}
+              title="Click to reopen"
+              className="inline-flex h-7 items-center gap-1.5 rounded-full border border-green bg-green-bg px-2.5 text-[12.5px] text-green hover:opacity-80 disabled:opacity-60"
+            >
+              <Check size={12} weight="bold" /> Done{x.done_at ? ` · ${formatDate(x.done_at)}` : ""}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={dis || !x.action}
+              title={x.action ? undefined : "Pick Repair, Replace or Regulate first"}
+              onClick={() => setDone(x.component, true)}
+              className="inline-flex h-7 items-center rounded-full border border-border-strong px-2.5 text-[12.5px] text-text-2 hover:border-accent-text hover:text-accent-text disabled:opacity-50"
+            >
+              Mark done
+            </button>
+          )}
+          <button type="button" disabled={dis} onClick={() => toggleComponent(x.component)} aria-label={`Remove ${COMPONENT_LABELS[x.component]}`} className="text-text-3 hover:text-text disabled:opacity-50">
+            <X size={14} />
+          </button>
+        </span>
+      </li>
 
     );
   }
@@ -208,7 +232,7 @@ export function InRepairForm(p: Props) {
       <div className="flex items-baseline justify-between">
         <div>
           <h2 className="text-[22px]">In repair</h2>
-          <p className="mt-1 text-[14.5px] text-text-2">Tick each planned item as it’s done, add anything found on the bench, then notes and time.</p>
+          <p className="mt-1 text-[14.5px] text-text-2">Mark each planned item done as you finish it, add anything found on the bench, then notes and time.</p>
         </div>
         <span className="flex-none text-[12.5px] text-text-3" aria-live="polite">
           {status === "saving" || pending ? "Saving…" : status === "saved" ? "Saved" : status === "error" ? "Couldn't save" : ""}
@@ -241,7 +265,7 @@ export function InRepairForm(p: Props) {
         )}
         {extra.length > 0 && (
           <div className="mt-4">
-            <p className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-text-3">Also done <span className="normal-case tracking-normal">· found on the bench</span></p>
+            <p className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-text-3">Also done <span className="normal-case tracking-normal">· found on the bench · done as soon as it&rsquo;s added</span></p>
             <ul className="mt-1.5 divide-y divide-border border-y border-border">{extra.map((x) => renderRow(x))}</ul>
           </div>
         )}
@@ -335,6 +359,9 @@ export function InRepairForm(p: Props) {
           className="h-4 w-4 accent-[var(--pivot-accent)]"
         />
         Repair complete
+        {!complete && rows.some((r) => !r.done) && (
+          <span className={hint}>{rows.filter((r) => !r.done).length} planned item{rows.filter((r) => !r.done).length === 1 ? " isn't" : "s aren't"} marked done yet</span>
+        )}
       </label>
 
       {error && <p className="text-[13px] text-red">{error}</p>}

@@ -275,6 +275,7 @@ const repairRowSchema = z.object({
   part_name: z.string().trim().max(120).nullable(),
   planned: z.boolean().optional(),
   done: z.boolean().optional(),
+  done_at: z.iso.datetime({ offset: true }).optional(),
 });
 
 const repairInput = z.object({
@@ -304,7 +305,7 @@ export async function saveInRepair(raw: z.input<typeof repairInput>): Promise<Sa
     ...(r.action ? { action: r.action } : {}),
     ...(r.variant ? { variant: r.variant } : {}),
     ...(r.planned ? { planned: true } : {}),
-    ...(r.done ? { done: true } : {}),
+    ...(r.done ? { done: true, done_at: r.done_at ?? new Date().toISOString() } : {}),
   }));
   const { error } = await supabase
     .from("tickets")

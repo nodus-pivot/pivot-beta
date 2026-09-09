@@ -79,13 +79,14 @@ export function asConditions(v: unknown): IntakeCondition[] {
 export function asCategories(v: unknown): RepairCategory[] {
   if (!Array.isArray(v)) return [];
   return v
-    .filter((c): c is { component: string; action?: unknown; variant?: unknown; planned?: unknown; done?: unknown } => !!c && typeof c === "object" && typeof (c as { component?: unknown }).component === "string")
+    .filter((c): c is { component: string; action?: unknown; variant?: unknown; planned?: unknown; done?: unknown; done_at?: unknown } => !!c && typeof c === "object" && typeof (c as { component?: unknown }).component === "string")
     .map((c) => ({
       component: c.component,
       action: typeof c.action === "string" && c.action in ACTION_LABELS ? (c.action as RepairAction) : undefined,
       variant: typeof c.variant === "string" ? c.variant : undefined,
       planned: c.planned === true ? true : undefined,
       done: c.done === true ? true : undefined,
+      done_at: typeof c.done_at === "string" ? c.done_at : undefined,
     }));
 }
 
